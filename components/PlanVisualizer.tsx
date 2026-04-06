@@ -47,7 +47,7 @@ export default function PlanVisualizer({ plan }: Props) {
     treeLayout(root)
 
     // Determine node type for coloring
-    const getNodeType = (node: d3.HierarchyPointNode<PlanNode>) => {
+    const getNodeType = (node: d3.HierarchyNode<PlanNode>) => {
       const data = node.data
       
       // Dead code
