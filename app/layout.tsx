@@ -30,8 +30,10 @@ export default function RootLayout({
             <div className="h-16 flex items-center gap-3 px-6 bg-warm-100/50 border-b border-warm-300/60">
               {!sidebarCollapsed && (
                 <>
-                  <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-warm">
-                    <span className="text-xl">🛠️</span>
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden">
+                    <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+                      <source src="/logo.webm" type="video/webm" />
+                    </video>
                   </div>
                   <div>
                     <h1 className="text-lg font-serif font-semibold text-warm-800">MyDevTools</h1>
@@ -39,8 +41,10 @@ export default function RootLayout({
                 </>
               )}
               {sidebarCollapsed && (
-                <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-warm mx-auto">
-                  <span className="text-xl">🛠️</span>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden mx-auto">
+                  <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+                    <source src="/logo.webm" type="video/webm" />
+                  </video>
                 </div>
               )}
             </div>
