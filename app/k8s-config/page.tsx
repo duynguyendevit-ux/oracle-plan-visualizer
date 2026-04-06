@@ -17,11 +17,11 @@ export default function K8sConfig() {
       if (!trimmed || trimmed.startsWith('#')) return
       
       // Parse YAML-like structure
-      const match = trimmed.match(/^(\s*)([a-zA-Z0-9_-]+):\s*(.*)$/)
+      const match = line.match(/^(\s*)([a-zA-Z0-9_-]+):\s*(.*)$/)
       if (!match) return
       
       const [, indent, key, value] = match
-      const level = indent.length / 2
+      const level = Math.floor(indent.length / 2)
       
       // Build prefix based on indentation
       if (level === 0) {
