@@ -204,7 +204,7 @@ export default function LogAnalyzer() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-200px)]>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-200px)]">
         {/* Input Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
