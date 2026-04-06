@@ -12,6 +12,8 @@ import ReactFlow, {
   MarkerType,
   NodeProps,
   useReactFlow,
+  getRectOfNodes,
+  getTransformForBounds,
   ReactFlowProvider,
 } from 'reactflow'
 import dagre from 'dagre'
@@ -281,10 +283,11 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleT
   return { nodes, edges }
 }
 
-export default function PlanVisualizer({ plan }: Props) {
+function PlanVisualizerInner({ plan }: Props) {
   const [direction, setDirection] = useState<LayoutDirection>('TB')
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
   const flowRef = useRef<HTMLDivElement>(null)
+  const { getNodes } = useReactFlow()
   
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () => convertToFlow(plan, direction, nodeStyle), 
@@ -301,18 +304,19 @@ export default function PlanVisualizer({ plan }: Props) {
     setEdges(newEdges)
   }, [direction, nodeStyle, plan, setNodes, setEdges])
   
-  // Export to image using ReactFlow's getNodesBounds
+  // Export to image using proper bounds
   const exportToImage = useCallback(async (format: 'png' | 'jpeg' | 'svg') => {
-    if (!flowRef.current) return
+    const nodesBounds = getRectOfNodes(getNodes())
+    const transform = getTransformForBounds(
+      nodesBounds,
+      nodesBounds.width,
+      nodesBounds.height,
+      0.5,
+      2,
+      0.1
+    )
     
-    const nodesBounds = {
-      x: Math.min(...nodes.map(n => n.position.x)),
-      y: Math.min(...nodes.map(n => n.position.y)),
-      width: Math.max(...nodes.map(n => n.position.x + 250)) - Math.min(...nodes.map(n => n.position.x)),
-      height: Math.max(...nodes.map(n => n.position.y + 100)) - Math.min(...nodes.map(n => n.position.y)),
-    }
-    
-    const viewport = flowRef.current.querySelector('.react-flow__viewport') as HTMLElement
+    const viewport = document.querySelector('.react-flow__viewport') as HTMLElement
     if (!viewport) return
     
     const exportFunc = format === 'png' ? toPng : format === 'jpeg' ? toJpeg : toSvg
@@ -320,10 +324,12 @@ export default function PlanVisualizer({ plan }: Props) {
     try {
       const dataUrl = await exportFunc(viewport, {
         backgroundColor: '#fef7ff',
-        width: nodesBounds.width + 200,
-        height: nodesBounds.height + 200,
+        width: nodesBounds.width * 2,
+        height: nodesBounds.height * 2,
         style: {
-          transform: `translate(${-nodesBounds.x + 100}px, ${-nodesBounds.y + 100}px)`,
+          width: `${nodesBounds.width * 2}px`,
+          height: `${nodesBounds.height * 2}px`,
+          transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
         },
       })
       
@@ -334,7 +340,7 @@ export default function PlanVisualizer({ plan }: Props) {
     } catch (err) {
       console.error('Export failed:', err)
     }
-  }, [nodes])
+  }, [getNodes])
   
   return (
     <div ref={flowRef} style={{ width: '100%', height: '800px', position: 'relative' }}>
@@ -518,5 +524,13 @@ export default function PlanVisualizer({ plan }: Props) {
         <Background gap={12} size={1} />
       </ReactFlow>
     </div>
+  )
+}
+
+export default function PlanVisualizer({ plan }: Props) {
+  return (
+    <ReactFlowProvider>
+      <PlanVisualizerInner plan={plan} />
+    </ReactFlowProvider>
   )
 }
