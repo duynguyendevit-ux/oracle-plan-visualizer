@@ -204,7 +204,7 @@ export default function LogAnalyzer() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-200px)]>
         {/* Input Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
@@ -302,7 +302,7 @@ export default function LogAnalyzer() {
             )}
           </div>
           
-          <div className="p-4 overflow-auto h-[500px]">
+          <div className="p-4 overflow-auto h-full">
             {results.length === 0 ? (
               <div className="h-full flex items-center justify-center text-warm-400">
                 <p className="text-sm font-serif">No logs to display</p>
