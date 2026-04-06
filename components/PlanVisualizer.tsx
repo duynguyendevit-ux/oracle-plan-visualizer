@@ -11,6 +11,7 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
 } from 'reactflow'
+import dagre from 'dagre'
 import 'reactflow/dist/style.css'
 
 interface PlanNode {
@@ -113,28 +114,21 @@ const getNodeLabel = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
   return lines.join('\n')
 }
 
-// Convert plan tree to ReactFlow nodes/edges
+// Convert plan tree to ReactFlow nodes/edges with Dagre layout
 const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleType: NodeStyle = 'detailed') => {
   const nodes: Node[] = []
   const edges: Edge[] = []
   let nodeId = 0
   
-  const isHorizontal = direction === 'LR'
-  const primarySpacing = isHorizontal ? 350 : 180
-  const secondarySpacing = isHorizontal ? 180 : 350
-  
-  const traverse = (node: PlanNode, parentId: string | null, depth: number, index: number) => {
+  // First pass: create nodes and edges
+  const traverse = (node: PlanNode, parentId: string | null) => {
     const id = `node-${nodeId++}`
-    
-    const position = isHorizontal 
-      ? { x: depth * primarySpacing, y: index * secondarySpacing }
-      : { x: index * secondarySpacing, y: depth * primarySpacing }
     
     nodes.push({
       id,
       type: 'default',
       data: { label: getNodeLabel(node, styleType) },
-      position,
+      position: { x: 0, y: 0 }, // Will be set by Dagre
       style: {
         ...getNodeStyle(node, styleType),
         width: 'auto',
@@ -161,13 +155,37 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleT
     }
     
     if (node.children) {
-      node.children.forEach((child, idx) => {
-        traverse(child, id, depth + 1, index * node.children!.length + idx)
+      node.children.forEach((child) => {
+        traverse(child, id)
       })
     }
   }
   
-  traverse(plan, null, 0, 0)
+  traverse(plan, null)
+  
+  // Apply Dagre layout
+  const dagreGraph = new dagre.graphlib.Graph()
+  dagreGraph.setDefaultEdgeLabel(() => ({}))
+  dagreGraph.setGraph({ rankdir: direction, nodesep: 100, ranksep: 150 })
+  
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: 250, height: 100 })
+  })
+  
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target)
+  })
+  
+  dagre.layout(dagreGraph)
+  
+  // Update node positions from Dagre
+  nodes.forEach((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id)
+    node.position = {
+      x: nodeWithPosition.x - 125,
+      y: nodeWithPosition.y - 50,
+    }
+  })
   
   return { nodes, edges }
 }
