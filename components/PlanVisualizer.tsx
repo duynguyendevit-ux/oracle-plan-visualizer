@@ -37,11 +37,16 @@ const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
     return {
       background: '#fff',
       border: '2px solid #333',
-      borderRadius: '8px',
+      borderRadius: '50%',
       padding: '10px',
       fontSize: '12px',
       fontFamily: 'monospace',
-      minWidth: '200px',
+      minWidth: '80px',
+      minHeight: '80px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
     }
   }
   
