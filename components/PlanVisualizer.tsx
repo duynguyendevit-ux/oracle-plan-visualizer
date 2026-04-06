@@ -305,12 +305,23 @@ export default function PlanVisualizer({ plan }: Props) {
   const exportToImage = useCallback((format: 'png' | 'jpeg' | 'svg') => {
     if (!flowRef.current) return
     
+    // Find the ReactFlow viewport element
+    const viewport = flowRef.current.querySelector('.react-flow__viewport')
+    if (!viewport) return
+    
     const exportFunc = format === 'png' ? toPng : format === 'jpeg' ? toJpeg : toSvg
     
-    exportFunc(flowRef.current, {
+    exportFunc(viewport as HTMLElement, {
       backgroundColor: '#fef7ff',
-      width: flowRef.current.offsetWidth,
-      height: flowRef.current.offsetHeight,
+      filter: (node) => {
+        // Exclude controls, minimap, and attribution
+        if (node.classList) {
+          return !node.classList.contains('react-flow__controls') &&
+                 !node.classList.contains('react-flow__minimap') &&
+                 !node.classList.contains('react-flow__attribution')
+        }
+        return true
+      },
     })
       .then((dataUrl) => {
         const link = document.createElement('a')
