@@ -17,6 +17,7 @@ export default function RootLayout({
   const navigation = [
     { name: '🔍 Execution Plan', href: '/' },
     { name: '📝 SQL Extractor', href: '/sql-extractor' },
+    { name: '🐛 Log Analyzer', href: '/log-analyzer' },
   ]
 
   return (
