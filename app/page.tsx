@@ -132,36 +132,36 @@ export default function Home() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 max-w-full mx-auto">
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-8">
-          <div className="bg-surface-container-low rounded-lg p-6 shadow-editorial">
-            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-2">Total Cost</div>
-            <div className="text-3xl font-serif font-semibold text-on-surface">{stats.totalCost}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div className="bg-surface-container-low rounded-lg p-4 shadow-editorial">
+            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-1">Total Cost</div>
+            <div className="text-2xl font-serif font-semibold text-on-surface">{stats.totalCost}</div>
           </div>
-          <div className="bg-surface-container-low rounded-lg p-6 shadow-editorial">
-            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-2">CPU Cost</div>
-            <div className="text-3xl font-serif font-semibold text-on-surface">{stats.totalCpu.toLocaleString()}</div>
+          <div className="bg-surface-container-low rounded-lg p-4 shadow-editorial">
+            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-1">CPU Cost</div>
+            <div className="text-2xl font-serif font-semibold text-on-surface">{stats.totalCpu.toLocaleString()}</div>
           </div>
-          <div className="bg-surface-container-low rounded-lg p-6 shadow-editorial">
-            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-2">Dead Branches</div>
-            <div className="text-3xl font-serif font-semibold text-tertiary">{stats.deadBranches}</div>
+          <div className="bg-surface-container-low rounded-lg p-4 shadow-editorial">
+            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-1">Dead Branches</div>
+            <div className="text-2xl font-serif font-semibold text-tertiary">{stats.deadBranches}</div>
           </div>
-          <div className="bg-surface-container-low rounded-lg p-6 shadow-editorial">
-            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-2">Full Scans</div>
-            <div className="text-3xl font-serif font-semibold text-tertiary">{stats.fullScans}</div>
+          <div className="bg-surface-container-low rounded-lg p-4 shadow-editorial">
+            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-1">Full Scans</div>
+            <div className="text-2xl font-serif font-semibold text-tertiary">{stats.fullScans}</div>
           </div>
-          <div className="bg-surface-container-low rounded-lg p-6 shadow-editorial">
-            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-2">Index Scans</div>
-            <div className="text-3xl font-serif font-semibold text-primary">{stats.indexScans}</div>
+          <div className="bg-surface-container-low rounded-lg p-4 shadow-editorial">
+            <div className="text-xs font-label font-medium text-on-surface-variant uppercase tracking-wide mb-1">Index Scans</div>
+            <div className="text-2xl font-serif font-semibold text-primary">{stats.indexScans}</div>
           </div>
         </div>
       )}
 
       {/* Input Panel */}
-      <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden mb-8">
-        <div className="bg-surface-container px-6 py-4">
+      <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden mb-4">
+        <div className="bg-surface-container px-4 py-3">
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Execution Plan JSON</h3>
             <button
@@ -173,23 +173,23 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="p-10">
+        <div className="p-4">
           <textarea
             value={planJson}
             onChange={(e) => setPlanJson(e.target.value)}
             placeholder="Paste your Oracle execution plan JSON here..."
-            className="w-full h-48 p-4 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
+            className="w-full h-32 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
           />
           
           {error && (
-            <div className="mt-4 p-4 bg-tertiary-container/30 border border-tertiary/30 text-tertiary rounded-lg text-sm">
+            <div className="mt-3 p-3 bg-tertiary-container/30 border border-tertiary/30 text-tertiary rounded-lg text-sm">
               {error}
             </div>
           )}
           
           <button
             onClick={handleParse}
-            className="mt-4 w-full bg-gradient-to-r from-primary to-primary-container text-white py-3 rounded-lg hover:opacity-90 font-semibold transition-opacity shadow-editorial"
+            className="mt-3 w-full bg-gradient-to-r from-primary to-primary-container text-white py-2.5 rounded-lg hover:opacity-90 font-semibold transition-opacity shadow-editorial"
           >
             Visualize Plan
           </button>
@@ -198,12 +198,12 @@ export default function Home() {
 
       {/* Visualization Panel */}
       <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
-        <div className="bg-surface-container px-6 py-4 flex justify-between items-center">
+        <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
           <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Execution Tree</h3>
           
           {/* Legend */}
           {parsedPlan && (
-            <div className="flex gap-6">
+            <div className="flex gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-400 border border-on-surface rounded-full"></div>
                 <span className="text-xs font-label text-on-surface-variant">Active</span>
@@ -224,7 +224,7 @@ export default function Home() {
           )}
         </div>
         
-        <div className="p-12">
+        <div className="p-4">
           {parsedPlan ? (
             <PlanVisualizer plan={parsedPlan} />
           ) : (
