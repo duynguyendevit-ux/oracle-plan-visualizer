@@ -27,8 +27,8 @@ export default function PlanVisualizer({ plan }: Props) {
     // Clear previous
     d3.select(svgRef.current).selectAll('*').remove()
 
-    const width = 800
-    const height = 600
+    const width = 1400
+    const height = 800
     const margin = { top: 20, right: 120, bottom: 20, left: 120 }
 
     const svg = d3.select(svgRef.current)

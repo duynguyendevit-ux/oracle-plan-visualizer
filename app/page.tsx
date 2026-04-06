@@ -196,7 +196,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Visualization Panel */}
+      {/* Visualization Panel - Full Width */}
       <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
         <div className="bg-warm-100/50 px-6 py-4 border-b border-warm-300/60 flex justify-between items-center">
           <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Execution Tree</h3>
