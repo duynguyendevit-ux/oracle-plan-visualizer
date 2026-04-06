@@ -52,7 +52,7 @@ export default function PlanVisualizer({ plan }: Props) {
         ? [height - margin.top - margin.bottom, width - margin.left - margin.right]
         : [width - margin.left - margin.right, height - margin.top - margin.bottom]
       )
-      .nodeSize(isHorizontal ? [120, 300] : [300, 120])
+      .nodeSize(isHorizontal ? [80, 200] : [200, 80])
 
     treeLayout(root)
 
