@@ -51,10 +51,10 @@ export default function PlanVisualizer({ plan }: Props) {
     // Convert plan to hierarchy
     const root = d3.hierarchy(plan)
     
-    // Create tree layout with tighter spacing
+    // Create tree layout with proper spacing to avoid overlap
     const treeLayout = d3.tree<PlanNode>()
-      .nodeSize(isHorizontal ? [50, 150] : [150, 50])
-      .separation((a, b) => (a.parent === b.parent ? 1 : 1.2))
+      .nodeSize(isHorizontal ? [80, 200] : [200, 80])
+      .separation((a, b) => (a.parent === b.parent ? 1.5 : 2))
 
     treeLayout(root)
 
