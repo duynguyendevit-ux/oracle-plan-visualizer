@@ -17,6 +17,7 @@ export default function LogAnalyzer() {
   const [results, setResults] = useState<LogEntry[]>([])
   const [stats, setStats] = useState<any>(null)
   const [error, setError] = useState<string>('')
+  const [loading, setLoading] = useState(false)
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 
@@ -39,85 +40,97 @@ export default function LogAnalyzer() {
   }
 
   const analyzeLogs = () => {
-    const lines = input.split('\n')
-    const entries: LogEntry[] = []
-    let currentEntry: LogEntry | null = null
+    setLoading(true)
+    setError('')
     
-    const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
-    
-    lines.forEach((line, index) => {
-      if (!line.trim()) return
-      
-      // Try JSON format first (Logstash/ELK)
+    // Use setTimeout to allow UI to update
+    setTimeout(() => {
       try {
-        const json = JSON.parse(line)
-        const level = (json.level || 'INFO').toUpperCase()
-        if (levels.hasOwnProperty(level)) {
-          levels[level as keyof typeof levels]++
-        }
+        const lines = input.split('\n')
+        const entries: LogEntry[] = []
+        let currentEntry: LogEntry | null = null
         
-        entries.push({
-          line: index + 1,
-          level,
-          timestamp: json['@timestamp'] || json.timestamp || '',
-          message: json.message || line,
-          stackTrace: json.stack_trace ? [json.stack_trace] : []
+        const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
+        
+        lines.forEach((line, index) => {
+          if (!line.trim()) return
+          
+          // Try JSON format first (Logstash/ELK)
+          try {
+            const json = JSON.parse(line)
+            const level = (json.level || 'INFO').toUpperCase()
+            if (levels.hasOwnProperty(level)) {
+              levels[level as keyof typeof levels]++
+            }
+            
+            entries.push({
+              line: index + 1,
+              level,
+              timestamp: json['@timestamp'] || json.timestamp || '',
+              message: json.message || line,
+              stackTrace: json.stack_trace ? [json.stack_trace] : []
+            })
+            return
+          } catch (e) {
+            // Not JSON, try standard log format
+          }
+          
+          // Detect standard log line (timestamp + level)
+          const logMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}[.,]\d+)\s+(ERROR|WARN|INFO|DEBUG|TRACE)\s+(.+)/)
+          
+          if (logMatch) {
+            // Save previous entry
+            if (currentEntry) {
+              entries.push(currentEntry)
+            }
+            
+            const [, timestamp, level, message] = logMatch
+            levels[level as keyof typeof levels]++
+            
+            currentEntry = {
+              line: index + 1,
+              level,
+              timestamp,
+              message,
+              stackTrace: []
+            }
+          } else if (currentEntry && line.trim()) {
+            // Stack trace or continuation
+            currentEntry.stackTrace!.push(line)
+          }
         })
-        return
-      } catch (e) {
-        // Not JSON, try standard log format
-      }
-      
-      // Detect standard log line (timestamp + level)
-      const logMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}[.,]\d+)\s+(ERROR|WARN|INFO|DEBUG|TRACE)\s+(.+)/)
-      
-      if (logMatch) {
-        // Save previous entry
+        
+        // Save last entry
         if (currentEntry) {
           entries.push(currentEntry)
         }
         
-        const [, timestamp, level, message] = logMatch
-        levels[level as keyof typeof levels]++
-        
-        currentEntry = {
-          line: index + 1,
-          level,
-          timestamp,
-          message,
-          stackTrace: []
+        // Filter by level
+        let filtered = entries
+        if (filterLevel !== 'ALL') {
+          filtered = entries.filter(e => e.level === filterLevel)
         }
-      } else if (currentEntry && line.trim()) {
-        // Stack trace or continuation
-        currentEntry.stackTrace!.push(line)
+        
+        // Filter by search term
+        if (searchTerm) {
+          filtered = filtered.filter(e => 
+            e.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            e.stackTrace?.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
+          )
+        }
+        
+        setResults(filtered)
+        setStats({
+          total: entries.length,
+          ...levels,
+          filtered: filtered.length
+        })
+      } catch (err) {
+        setError('Error parsing logs: ' + (err as Error).message)
+      } finally {
+        setLoading(false)
       }
-    })
-    
-    // Save last entry
-    if (currentEntry) {
-      entries.push(currentEntry)
-    }
-    
-    // Filter by level
-    let filtered = entries
-    if (filterLevel !== 'ALL') {
-      filtered = entries.filter(e => e.level === filterLevel)
-    }
-    
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(e => 
-        e.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.stackTrace?.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
-      )
-    }
-    
-    setResults(filtered)
-    setStats({
-      total: entries.length,
-      ...levels,
-      filtered: filtered.length
-    })
+    }, 100)
   }
 
   const loadSample = () => {
@@ -228,9 +241,20 @@ export default function LogAnalyzer() {
             
             <button
               onClick={analyzeLogs}
-              className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm"
+              disabled={loading}
+              className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Analyze Logs
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                'Analyze Logs'
+              )}
             </button>
           </div>
         </div>
