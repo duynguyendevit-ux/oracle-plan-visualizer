@@ -301,38 +301,40 @@ export default function PlanVisualizer({ plan }: Props) {
     setEdges(newEdges)
   }, [direction, nodeStyle, plan, setNodes, setEdges])
   
-  // Export to image
-  const exportToImage = useCallback((format: 'png' | 'jpeg' | 'svg') => {
+  // Export to image using ReactFlow's getNodesBounds
+  const exportToImage = useCallback(async (format: 'png' | 'jpeg' | 'svg') => {
     if (!flowRef.current) return
     
-    // Find the ReactFlow viewport element
-    const viewport = flowRef.current.querySelector('.react-flow__viewport')
+    const nodesBounds = {
+      x: Math.min(...nodes.map(n => n.position.x)),
+      y: Math.min(...nodes.map(n => n.position.y)),
+      width: Math.max(...nodes.map(n => n.position.x + 250)) - Math.min(...nodes.map(n => n.position.x)),
+      height: Math.max(...nodes.map(n => n.position.y + 100)) - Math.min(...nodes.map(n => n.position.y)),
+    }
+    
+    const viewport = flowRef.current.querySelector('.react-flow__viewport') as HTMLElement
     if (!viewport) return
     
     const exportFunc = format === 'png' ? toPng : format === 'jpeg' ? toJpeg : toSvg
     
-    exportFunc(viewport as HTMLElement, {
-      backgroundColor: '#fef7ff',
-      filter: (node) => {
-        // Exclude controls, minimap, and attribution
-        if (node.classList) {
-          return !node.classList.contains('react-flow__controls') &&
-                 !node.classList.contains('react-flow__minimap') &&
-                 !node.classList.contains('react-flow__attribution')
-        }
-        return true
-      },
-    })
-      .then((dataUrl) => {
-        const link = document.createElement('a')
-        link.download = `execution-plan.${format}`
-        link.href = dataUrl
-        link.click()
+    try {
+      const dataUrl = await exportFunc(viewport, {
+        backgroundColor: '#fef7ff',
+        width: nodesBounds.width + 200,
+        height: nodesBounds.height + 200,
+        style: {
+          transform: `translate(${-nodesBounds.x + 100}px, ${-nodesBounds.y + 100}px)`,
+        },
       })
-      .catch((err) => {
-        console.error('Export failed:', err)
-      })
-  }, [])
+      
+      const link = document.createElement('a')
+      link.download = `execution-plan.${format}`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('Export failed:', err)
+    }
+  }, [nodes])
   
   return (
     <div ref={flowRef} style={{ width: '100%', height: '800px', position: 'relative' }}>
