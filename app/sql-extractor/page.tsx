@@ -10,33 +10,57 @@ export default function SQLExtractor() {
     // Extract SQL from various formats (logs, code, etc.)
     const lines = input.split('\n')
     const sqlLines: string[] = []
+    const bindings: Array<{ index: number, value: string }> = []
     let inSQL = false
     
     lines.forEach(line => {
+      // Extract binding parameters
+      const bindMatch = line.match(/binding parameter \[(\d+)\] as \[.*?\] - \[(.+?)\]/)
+      if (bindMatch) {
+        bindings.push({ index: parseInt(bindMatch[1]), value: bindMatch[2] })
+        return
+      }
+      
       // Remove common prefixes (timestamps, log levels, etc.)
       let cleaned = line
+        .replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.,]\d+Z?\s+/, '') // ISO timestamp
         .replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d+\s+/, '') // timestamp
         .replace(/^\[.*?\]\s*/, '') // [INFO], [DEBUG], etc.
         .replace(/^(INFO|DEBUG|WARN|ERROR|TRACE)\s*:\s*/i, '') // log level
         .replace(/^.*?:\s*Executing\s+SQL:\s*/i, '') // "Executing SQL:"
+        .replace(/^.*?---\s+\[.*?\]\s+/, '') // Spring Boot format
+        .replace(/^Hibernate:\s*/i, '') // Hibernate prefix
         .trim()
       
       // Detect SQL keywords
-      if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH)\b/i.test(cleaned)) {
+      if (/^(select|insert|update|delete|create|alter|drop|with)\b/i.test(cleaned)) {
         inSQL = true
       }
       
-      if (inSQL) {
+      if (inSQL && cleaned) {
         sqlLines.push(cleaned)
         
         // End of SQL statement
-        if (cleaned.endsWith(';')) {
+        if (cleaned.endsWith(';') || /rows only$/i.test(cleaned)) {
           inSQL = false
         }
       }
     })
     
-    setOutput(sqlLines.join('\n'))
+    let sql = sqlLines.join('\n')
+    
+    // Replace ? with binding values
+    if (bindings.length > 0) {
+      bindings.sort((a, b) => a.index - b.index)
+      bindings.forEach(binding => {
+        const value = binding.value
+        // Format value based on type
+        const formattedValue = /^\d+$/.test(value) ? value : `'${value}'`
+        sql = sql.replace('?', formattedValue)
+      })
+    }
+    
+    setOutput(sql)
   }
 
   const formatSQL = () => {
