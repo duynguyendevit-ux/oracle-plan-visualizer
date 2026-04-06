@@ -29,9 +29,22 @@ interface Props {
 }
 
 type LayoutDirection = 'TB' | 'LR'
+type NodeStyle = 'detailed' | 'simple'
 
 // Custom node colors based on type
-const getNodeStyle = (data: PlanNode) => {
+const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
+  if (styleType === 'simple') {
+    return {
+      background: '#fff',
+      border: '2px solid #333',
+      borderRadius: '8px',
+      padding: '10px',
+      fontSize: '12px',
+      fontFamily: 'monospace',
+      minWidth: '200px',
+    }
+  }
+  
   let backgroundColor = '#fff'
   let borderColor = '#333'
   
@@ -68,7 +81,7 @@ const getNodeStyle = (data: PlanNode) => {
 }
 
 // Build label for node
-const getNodeLabel = (data: PlanNode) => {
+const getNodeLabel = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
   const lines = []
   
   let label = data.operation
@@ -76,11 +89,11 @@ const getNodeLabel = (data: PlanNode) => {
   lines.push(label)
   
   if (data.objectName) {
-    lines.push(`📦 ${data.objectName}`)
+    lines.push(styleType === 'detailed' ? `📦 ${data.objectName}` : data.objectName)
   }
   
   if (data.cost !== undefined) {
-    const costLine = `💰 Cost: ${data.cost}`
+    const costLine = styleType === 'detailed' ? `💰 Cost: ${data.cost}` : `Cost: ${data.cost}`
     if (data.cardinality) {
       lines.push(`${costLine} | Rows: ${data.cardinality}`)
     } else {
@@ -89,14 +102,14 @@ const getNodeLabel = (data: PlanNode) => {
   }
   
   if (data.filterPredicates) {
-    lines.push(`🔍 ${data.filterPredicates}`)
+    lines.push(styleType === 'detailed' ? `🔍 ${data.filterPredicates}` : data.filterPredicates)
   }
   
   return lines.join('\n')
 }
 
 // Convert plan tree to ReactFlow nodes/edges
-const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB') => {
+const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleType: NodeStyle = 'detailed') => {
   const nodes: Node[] = []
   const edges: Edge[] = []
   let nodeId = 0
@@ -115,10 +128,10 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB') => {
     nodes.push({
       id,
       type: 'default',
-      data: { label: getNodeLabel(node) },
+      data: { label: getNodeLabel(node, styleType) },
       position,
       style: {
-        ...getNodeStyle(node),
+        ...getNodeStyle(node, styleType),
         width: 'auto',
         minWidth: '250px',
         maxWidth: '400px',
@@ -156,21 +169,22 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB') => {
 
 export default function PlanVisualizer({ plan }: Props) {
   const [direction, setDirection] = useState<LayoutDirection>('TB')
+  const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
   
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
-    () => convertToFlow(plan, direction), 
-    [plan, direction]
+    () => convertToFlow(plan, direction, nodeStyle), 
+    [plan, direction, nodeStyle]
   )
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   
-  // Update nodes when direction changes
+  // Update nodes when direction or style changes
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = convertToFlow(plan, direction)
+    const { nodes: newNodes, edges: newEdges } = convertToFlow(plan, direction, nodeStyle)
     setNodes(newNodes)
     setEdges(newEdges)
-  }, [direction, plan, setNodes, setEdges])
+  }, [direction, nodeStyle, plan, setNodes, setEdges])
   
   return (
     <div style={{ width: '100%', height: '800px', position: 'relative' }}>
@@ -181,44 +195,94 @@ export default function PlanVisualizer({ plan }: Props) {
         right: '10px', 
         zIndex: 10,
         display: 'flex',
+        flexDirection: 'column',
         gap: '8px',
-        background: 'rgba(255, 255, 255, 0.9)',
-        padding: '8px',
-        borderRadius: '8px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
       }}>
-        <button
-          onClick={() => setDirection('TB')}
-          style={{
-            padding: '6px 12px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: '500',
-            background: direction === 'TB' ? '#094cb2' : '#e8e1e8',
-            color: direction === 'TB' ? 'white' : '#1d1b20',
-            transition: 'all 0.2s'
-          }}
-        >
-          ⬇️ Top to Bottom
-        </button>
-        <button
-          onClick={() => setDirection('LR')}
-          style={{
-            padding: '6px 12px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: '500',
-            background: direction === 'LR' ? '#094cb2' : '#e8e1e8',
-            color: direction === 'LR' ? 'white' : '#1d1b20',
-            transition: 'all 0.2s'
-          }}
-        >
-          ➡️ Left to Right
-        </button>
+        {/* Layout Direction */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          background: 'rgba(255, 255, 255, 0.9)',
+          padding: '8px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+          <button
+            onClick={() => setDirection('TB')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: direction === 'TB' ? '#094cb2' : '#e8e1e8',
+              color: direction === 'TB' ? 'white' : '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            ⬇️ Top to Bottom
+          </button>
+          <button
+            onClick={() => setDirection('LR')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: direction === 'LR' ? '#094cb2' : '#e8e1e8',
+              color: direction === 'LR' ? 'white' : '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            ➡️ Left to Right
+          </button>
+        </div>
+        
+        {/* Node Style */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          background: 'rgba(255, 255, 255, 0.9)',
+          padding: '8px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+          <button
+            onClick={() => setNodeStyle('detailed')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: nodeStyle === 'detailed' ? '#094cb2' : '#e8e1e8',
+              color: nodeStyle === 'detailed' ? 'white' : '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            🎨 Detailed
+          </button>
+          <button
+            onClick={() => setNodeStyle('simple')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: nodeStyle === 'simple' ? '#094cb2' : '#e8e1e8',
+              color: nodeStyle === 'simple' ? 'white' : '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            ⚪ Simple
+          </button>
+        </div>
       </div>
       
       <ReactFlow
