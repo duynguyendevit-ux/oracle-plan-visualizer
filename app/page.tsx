@@ -11,15 +11,41 @@ export default function Home() {
   const [planJson, setPlanJson] = useState('')
   const [parsedPlan, setParsedPlan] = useState(null)
   const [error, setError] = useState('')
+  const [stats, setStats] = useState<any>(null)
+
+  const analyzePlan = (plan: any) => {
+    let totalCost = 0
+    let totalCpu = 0
+    let deadBranches = 0
+    let fullScans = 0
+    let indexScans = 0
+
+    const traverse = (node: any) => {
+      if (node.cost) totalCost += node.cost
+      if (node.cpuCost) totalCpu += node.cpuCost
+      if (node.filterPredicates?.includes('NULL IS NOT NULL')) deadBranches++
+      if (node.operation === 'TABLE ACCESS' && node.options === 'FULL') fullScans++
+      if (node.operation === 'INDEX') indexScans++
+      
+      if (node.children) {
+        node.children.forEach((child: any) => traverse(child))
+      }
+    }
+
+    traverse(plan)
+    return { totalCost, totalCpu, deadBranches, fullScans, indexScans }
+  }
 
   const handleParse = () => {
     try {
       const parsed = JSON.parse(planJson)
       setParsedPlan(parsed)
+      setStats(analyzePlan(parsed))
       setError('')
     } catch (e) {
-      setError('Invalid JSON format')
+      setError('Invalid JSON format. Please check your input.')
       setParsedPlan(null)
+      setStats(null)
     }
   }
 
@@ -74,6 +100,29 @@ export default function Home() {
                 "objectName": "facility_contact_persons",
                 "cost": 2
               }]
+            },
+            {
+              "operation": "FILTER",
+              "filterPredicates": "NULL IS NOT NULL",
+              "children": [{
+                "operation": "NESTED LOOPS",
+                "cost": 4,
+                "children": [
+                  {
+                    "operation": "TABLE ACCESS",
+                    "options": "BY INDEX ROWID",
+                    "objectName": "responsible_persons",
+                    "cost": 1
+                  },
+                  {
+                    "operation": "TABLE ACCESS",
+                    "options": "FULL",
+                    "objectName": "responsible_facilities",
+                    "cost": 3,
+                    "cpuCost": 46812
+                  }
+                ]
+              }]
             }
           ]
         }]
@@ -83,79 +132,128 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">🔍 Oracle Execution Plan Visualizer</h1>
-        <p className="text-gray-600 mb-8">Paste your execution plan JSON to visualize performance bottlenecks</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-2xl">🔍</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Oracle Execution Plan Visualizer</h1>
+              <p className="text-sm text-slate-600">Analyze and visualize database query performance</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total Cost</div>
+              <div className="text-2xl font-bold text-slate-900">{stats.totalCost}</div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">CPU Cost</div>
+              <div className="text-2xl font-bold text-slate-900">{stats.totalCpu.toLocaleString()}</div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Dead Branches</div>
+              <div className="text-2xl font-bold text-pink-600">{stats.deadBranches}</div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Full Scans</div>
+              <div className="text-2xl font-bold text-red-600">{stats.fullScans}</div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Index Scans</div>
+              <div className="text-2xl font-bold text-blue-600">{stats.indexScans}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Input Panel */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Execution Plan JSON</h2>
-              <button
-                onClick={loadSample}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Load Sample
-              </button>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-slate-900">Execution Plan JSON</h2>
+                <button
+                  onClick={loadSample}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Load Sample
+                </button>
+              </div>
             </div>
             
-            <textarea
-              value={planJson}
-              onChange={(e) => setPlanJson(e.target.value)}
-              placeholder="Paste your Oracle execution plan JSON here..."
-              className="w-full h-96 p-4 border rounded font-mono text-sm"
-            />
-            
-            {error && (
-              <div className="mt-4 p-3 bg-red-50 text-red-700 rounded">
-                {error}
-              </div>
-            )}
-            
-            <button
-              onClick={handleParse}
-              className="mt-4 w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-semibold"
-            >
-              Visualize Plan
-            </button>
+            <div className="p-6">
+              <textarea
+                value={planJson}
+                onChange={(e) => setPlanJson(e.target.value)}
+                placeholder="Paste your Oracle execution plan JSON here..."
+                className="w-full h-96 p-4 border border-slate-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              />
+              
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+              
+              <button
+                onClick={handleParse}
+                className="mt-4 w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-lg hover:from-blue-700 hover:to-blue-800 font-semibold shadow-lg shadow-blue-500/30 transition-all"
+              >
+                Visualize Plan
+              </button>
+            </div>
           </div>
 
           {/* Visualization Panel */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Visualization</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">Execution Tree</h2>
+            </div>
             
-            {parsedPlan ? (
-              <PlanVisualizer plan={parsedPlan} />
-            ) : (
-              <div className="h-96 flex items-center justify-center text-gray-400">
-                Paste JSON and click "Visualize Plan" to see the tree
-              </div>
-            )}
+            <div className="p-6">
+              {parsedPlan ? (
+                <PlanVisualizer plan={parsedPlan} />
+              ) : (
+                <div className="h-96 flex flex-col items-center justify-center text-slate-400">
+                  <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                  </svg>
+                  <p className="text-sm">Paste JSON and click "Visualize Plan"</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Legend */}
         {parsedPlan && (
-          <div className="mt-8 bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Legend</h3>
-            <div className="flex gap-6 flex-wrap">
+          <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h3 className="text-sm font-semibold text-slate-900 mb-4 uppercase tracking-wide">Legend</h3>
+            <div className="flex gap-8 flex-wrap">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-green-400 border-2 border-gray-800 rounded"></div>
-                <span>Active Branch</span>
+                <div className="w-4 h-4 bg-green-400 border-2 border-slate-800 rounded-full"></div>
+                <span className="text-sm text-slate-700">Active Branch</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-pink-300 border-2 border-gray-800 rounded"></div>
-                <span>Dead Code</span>
+                <div className="w-4 h-4 bg-pink-300 border-2 border-slate-800 rounded-full"></div>
+                <span className="text-sm text-slate-700">Dead Code</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-red-400 border-2 border-gray-800 rounded"></div>
-                <span>Performance Issue</span>
+                <div className="w-4 h-4 bg-red-400 border-2 border-slate-800 rounded-full"></div>
+                <span className="text-sm text-slate-700">Performance Issue</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-blue-300 border-2 border-gray-800 rounded"></div>
-                <span>Index Scan</span>
+                <div className="w-4 h-4 bg-blue-300 border-2 border-slate-800 rounded-full"></div>
+                <span className="text-sm text-slate-700">Index Scan</span>
               </div>
             </div>
           </div>
