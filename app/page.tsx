@@ -206,19 +206,19 @@ export default function Home() {
             <div className="flex gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-400 border border-on-surface rounded-full"></div>
-                <span className="text-xs font-label text-on-surface-variant">Active</span>
+                <span className="text-xs font-label text-on-surface-variant">Active Branch</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-pink-300 border border-on-surface rounded-full"></div>
-                <span className="text-xs font-label text-on-surface-variant">Dead</span>
+                <span className="text-xs font-label text-on-surface-variant">Dead Code (NULL IS NOT NULL)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-tertiary border border-on-surface rounded-full"></div>
-                <span className="text-xs font-label text-on-surface-variant">Issue</span>
+                <span className="text-xs font-label text-on-surface-variant">Full Table Scan</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-primary border border-on-surface rounded-full"></div>
-                <span className="text-xs font-label text-on-surface-variant">Index</span>
+                <span className="text-xs font-label text-on-surface-variant">Index Scan</span>
               </div>
             </div>
           )}

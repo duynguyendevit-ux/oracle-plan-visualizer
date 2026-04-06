@@ -108,7 +108,21 @@ const getNodeLabel = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
   }
   
   if (data.filterPredicates) {
-    lines.push(styleType === 'detailed' ? `🔍 ${data.filterPredicates}` : data.filterPredicates)
+    const filterLabel = styleType === 'detailed' ? `🔍 ${data.filterPredicates}` : data.filterPredicates
+    if (data.filterPredicates.includes('NULL IS NOT NULL')) {
+      lines.push(styleType === 'detailed' ? `⚠️ Dead Code: ${data.filterPredicates}` : `Dead: ${data.filterPredicates}`)
+    } else {
+      lines.push(filterLabel)
+    }
+  }
+  
+  // Add performance hints
+  if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
+    lines.push(styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan')
+  }
+  
+  if (data.operation === 'INDEX') {
+    lines.push(styleType === 'detailed' ? '✅ Using Index' : 'Index')
   }
   
   return lines.join('\n')
