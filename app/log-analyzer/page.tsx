@@ -25,7 +25,29 @@ export default function LogAnalyzer() {
     const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
     
     lines.forEach((line, index) => {
-      // Detect log line (timestamp + level)
+      if (!line.trim()) return
+      
+      // Try JSON format first (Logstash/ELK)
+      try {
+        const json = JSON.parse(line)
+        const level = (json.level || 'INFO').toUpperCase()
+        if (levels.hasOwnProperty(level)) {
+          levels[level as keyof typeof levels]++
+        }
+        
+        entries.push({
+          line: index + 1,
+          level,
+          timestamp: json['@timestamp'] || json.timestamp || '',
+          message: json.message || line,
+          stackTrace: json.stack_trace ? [json.stack_trace] : []
+        })
+        return
+      } catch (e) {
+        // Not JSON, try standard log format
+      }
+      
+      // Detect standard log line (timestamp + level)
       const logMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}[.,]\d+)\s+(ERROR|WARN|INFO|DEBUG|TRACE)\s+(.+)/)
       
       if (logMatch) {
