@@ -46,7 +46,7 @@ const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      textAlign: 'center',
+      textAlign: 'center' as const,
     }
   }
   
