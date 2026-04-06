@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -11,8 +11,11 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
   NodeProps,
+  useReactFlow,
+  ReactFlowProvider,
 } from 'reactflow'
 import dagre from 'dagre'
+import { toPng, toJpeg, toSvg } from 'html-to-image'
 import 'reactflow/dist/style.css'
 
 interface PlanNode {
@@ -281,6 +284,7 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleT
 export default function PlanVisualizer({ plan }: Props) {
   const [direction, setDirection] = useState<LayoutDirection>('TB')
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
+  const flowRef = useRef<HTMLDivElement>(null)
   
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () => convertToFlow(plan, direction, nodeStyle), 
@@ -297,8 +301,30 @@ export default function PlanVisualizer({ plan }: Props) {
     setEdges(newEdges)
   }, [direction, nodeStyle, plan, setNodes, setEdges])
   
+  // Export to image
+  const exportToImage = useCallback((format: 'png' | 'jpeg' | 'svg') => {
+    if (!flowRef.current) return
+    
+    const exportFunc = format === 'png' ? toPng : format === 'jpeg' ? toJpeg : toSvg
+    
+    exportFunc(flowRef.current, {
+      backgroundColor: '#fef7ff',
+      width: flowRef.current.offsetWidth,
+      height: flowRef.current.offsetHeight,
+    })
+      .then((dataUrl) => {
+        const link = document.createElement('a')
+        link.download = `execution-plan.${format}`
+        link.href = dataUrl
+        link.click()
+      })
+      .catch((err) => {
+        console.error('Export failed:', err)
+      })
+  }, [])
+  
   return (
-    <div style={{ width: '100%', height: '800px', position: 'relative' }}>
+    <div ref={flowRef} style={{ width: '100%', height: '800px', position: 'relative' }}>
       {/* Layout Toggle */}
       <div style={{ 
         position: 'absolute', 
@@ -392,6 +418,65 @@ export default function PlanVisualizer({ plan }: Props) {
             }}
           >
             ⚪ Simple
+          </button>
+        </div>
+        
+        {/* Export Options */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          background: 'rgba(255, 255, 255, 0.9)',
+          padding: '8px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+          <button
+            onClick={() => exportToImage('png')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: '#e8e1e8',
+              color: '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            📷 PNG
+          </button>
+          <button
+            onClick={() => exportToImage('jpeg')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: '#e8e1e8',
+              color: '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            🖼️ JPEG
+          </button>
+          <button
+            onClick={() => exportToImage('svg')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: '#e8e1e8',
+              color: '#1d1b20',
+              transition: 'all 0.2s'
+            }}
+          >
+            🎨 SVG
           </button>
         </div>
       </div>
