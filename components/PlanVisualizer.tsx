@@ -36,6 +36,9 @@ export default function PlanVisualizer({ plan }: Props) {
     const height = 1200
     const margin = { top: 40, right: 100, bottom: 40, left: 100 }
 
+    // Determine layout direction first
+    const isHorizontal = direction === 'LR'
+
     const svg = d3.select(svgRef.current)
       .attr('width', width)
       .attr('height', height)
@@ -49,7 +52,6 @@ export default function PlanVisualizer({ plan }: Props) {
     const root = d3.hierarchy(plan)
     
     // Create tree layout
-    const isHorizontal = direction === 'LR'
     const treeLayout = d3.tree<PlanNode>()
       .size(isHorizontal 
         ? [height - margin.top - margin.bottom, width - margin.left - margin.right]
