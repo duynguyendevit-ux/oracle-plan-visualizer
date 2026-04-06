@@ -1,7 +1,17 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import * as d3 from 'd3'
+import { useCallback, useMemo } from 'react'
+import ReactFlow, {
+  Node,
+  Edge,
+  Controls,
+  Background,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+} from 'reactflow'
+import 'reactflow/dist/style.css'
 
 interface PlanNode {
   operation: string
@@ -18,162 +28,152 @@ interface Props {
   plan: PlanNode
 }
 
-export default function PlanVisualizer({ plan }: Props) {
-  const svgRef = useRef<SVGSVGElement>(null)
+// Custom node colors based on type
+const getNodeStyle = (data: PlanNode) => {
+  let backgroundColor = '#fff'
+  let borderColor = '#333'
+  
+  // Dead code
+  if (data.filterPredicates?.includes('NULL IS NOT NULL')) {
+    backgroundColor = '#FFB6C1'
+    borderColor = '#FF1493'
+  }
+  // Performance issue (full table scan)
+  else if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
+    backgroundColor = '#FF6B6B'
+    borderColor = '#DC143C'
+  }
+  // Index scan
+  else if (data.operation === 'INDEX') {
+    backgroundColor = '#87CEEB'
+    borderColor = '#4682B4'
+  }
+  // Active branch
+  else if (data.children && data.children.length > 0) {
+    backgroundColor = '#90EE90'
+    borderColor = '#32CD32'
+  }
+  
+  return {
+    background: backgroundColor,
+    border: `2px solid ${borderColor}`,
+    borderRadius: '8px',
+    padding: '10px',
+    fontSize: '12px',
+    fontFamily: 'monospace',
+    minWidth: '200px',
+  }
+}
 
-  useEffect(() => {
-    if (!svgRef.current || !plan) return
-
-    // Clear previous
-    d3.select(svgRef.current).selectAll('*').remove()
-
-    const width = 1400
-    const height = 800
-    const margin = { top: 20, right: 120, bottom: 20, left: 120 }
-
-    const svg = d3.select(svgRef.current)
-      .attr('width', width)
-      .attr('height', height)
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    // Convert plan to hierarchy
-    const root = d3.hierarchy(plan)
-    
-    // Create tree layout
-    const treeLayout = d3.tree<PlanNode>()
-      .size([height - margin.top - margin.bottom, width - margin.left - margin.right])
-
-    treeLayout(root)
-
-    // Determine node type for coloring
-    const getNodeType = (node: d3.HierarchyNode<PlanNode>) => {
-      const data = node.data
-      
-      // Dead code
-      if (data.filterPredicates?.includes('NULL IS NOT NULL')) {
-        return 'dead'
-      }
-      
-      // Performance issue (full table scan)
-      if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
-        return 'issue'
-      }
-      
-      // Index scan
-      if (data.operation === 'INDEX') {
-        return 'index'
-      }
-      
-      // Active branch (has children and not dead)
-      if (node.children && node.children.length > 0) {
-        const hasDeadChildren = node.children.some(c => 
-          c.data.filterPredicates?.includes('NULL IS NOT NULL')
-        )
-        if (!hasDeadChildren) return 'active'
-      }
-      
-      return 'default'
+// Build label for node
+const getNodeLabel = (data: PlanNode) => {
+  const lines = []
+  
+  let label = data.operation
+  if (data.options) label += ` ${data.options}`
+  lines.push(label)
+  
+  if (data.objectName) {
+    lines.push(`📦 ${data.objectName}`)
+  }
+  
+  if (data.cost !== undefined) {
+    const costLine = `💰 Cost: ${data.cost}`
+    if (data.cardinality) {
+      lines.push(`${costLine} | Rows: ${data.cardinality}`)
+    } else {
+      lines.push(costLine)
     }
+  }
+  
+  if (data.filterPredicates) {
+    lines.push(`🔍 ${data.filterPredicates}`)
+  }
+  
+  return lines.join('\n')
+}
 
-    // Draw links
-    svg.selectAll('.link')
-      .data(root.links())
-      .enter()
-      .append('path')
-      .attr('class', 'link')
-      .attr('fill', 'none')
-      .attr('stroke', '#999')
-      .attr('stroke-width', 2)
-      .attr('d', d3.linkHorizontal<any, d3.HierarchyPointNode<PlanNode>>()
-        .x(d => d.y)
-        .y(d => d.x))
-
-    // Draw nodes
-    const node = svg.selectAll('.node')
-      .data(root.descendants())
-      .enter()
-      .append('g')
-      .attr('class', 'node')
-      .attr('transform', d => `translate(${d.y},${d.x})`)
-
-    // Node circles
-    node.append('circle')
-      .attr('r', 6)
-      .attr('fill', d => {
-        const type = getNodeType(d)
-        switch(type) {
-          case 'active': return '#90EE90'
-          case 'dead': return '#FFB6C1'
-          case 'issue': return '#FF6B6B'
-          case 'index': return '#87CEEB'
-          default: return '#fff'
-        }
+// Convert plan tree to ReactFlow nodes/edges
+const convertToFlow = (plan: PlanNode) => {
+  const nodes: Node[] = []
+  const edges: Edge[] = []
+  let nodeId = 0
+  
+  const traverse = (node: PlanNode, parentId: string | null, depth: number, index: number) => {
+    const id = `node-${nodeId++}`
+    
+    nodes.push({
+      id,
+      type: 'default',
+      data: { label: getNodeLabel(node) },
+      position: { x: index * 350, y: depth * 180 },
+      style: {
+        ...getNodeStyle(node),
+        width: 'auto',
+        minWidth: '250px',
+        maxWidth: '400px',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      },
+      draggable: true,
+    })
+    
+    if (parentId) {
+      edges.push({
+        id: `edge-${parentId}-${id}`,
+        source: parentId,
+        target: id,
+        type: 'smoothstep',
+        animated: false,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+        },
+        style: { stroke: '#999', strokeWidth: 2 },
       })
-      .attr('stroke', '#333')
-      .attr('stroke-width', 2)
-      .style('cursor', 'pointer')
-      .append('title')
-      .text(d => {
-        const lines = []
-        lines.push(`Operation: ${d.data.operation}`)
-        if (d.data.options) lines.push(`Options: ${d.data.options}`)
-        if (d.data.objectName) lines.push(`Object: ${d.data.objectName}`)
-        if (d.data.cost !== undefined) lines.push(`Cost: ${d.data.cost}`)
-        if (d.data.cardinality) lines.push(`Rows: ${d.data.cardinality}`)
-        if (d.data.cpuCost) lines.push(`CPU Cost: ${d.data.cpuCost}`)
-        if (d.data.filterPredicates) lines.push(`Filter: ${d.data.filterPredicates}`)
-        return lines.join('\n')
+    }
+    
+    if (node.children) {
+      node.children.forEach((child, idx) => {
+        traverse(child, id, depth + 1, index * node.children!.length + idx)
       })
+    }
+  }
+  
+  traverse(plan, null, 0, 0)
+  
+  return { nodes, edges }
+}
 
-    // Node labels
-    node.append('text')
-      .attr('dy', '.35em')
-      .attr('x', d => d.children ? -10 : 10)
-      .style('text-anchor', d => d.children ? 'end' : 'start')
-      .style('font-size', '12px')
-      .style('font-family', 'monospace')
-      .each(function(d) {
-        const text = d3.select(this)
-        const lines = []
-        
-        // Build label
-        let label = d.data.operation
-        if (d.data.options) label += ` ${d.data.options}`
-        if (d.data.objectName) {
-          lines.push(label)
-          lines.push(d.data.objectName) // Table/index name on separate line
-        } else {
-          lines.push(label)
-        }
-        if (d.data.cost !== undefined) {
-          const costLine = `Cost: ${d.data.cost}`
-          if (d.data.cardinality) {
-            lines.push(`${costLine}, Rows: ${d.data.cardinality}`)
-          } else {
-            lines.push(costLine)
-          }
-        }
-        
-        // Render multi-line
-        lines.forEach((line, i) => {
-          const tspan = text.append('tspan')
-            .attr('x', d.children ? -10 : 10)
-            .attr('dy', i === 0 ? 0 : '1.2em')
-            .text(line)
-          
-          // Bold table/index names (second line if objectName exists)
-          if (i === 1 && d.data.objectName) {
-            tspan.style('font-weight', 'bold')
-          }
-        })
-      })
-
-  }, [plan])
-
+export default function PlanVisualizer({ plan }: Props) {
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => convertToFlow(plan), [plan])
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  
   return (
-    <div className="overflow-auto">
-      <svg ref={svgRef} className="border rounded"></svg>
+    <div style={{ width: '100%', height: '800px' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodesDraggable={true}
+        nodesConnectable={false}
+        elementsSelectable={true}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        attributionPosition="bottom-left"
+      >
+        <Controls />
+        <MiniMap 
+          nodeColor={(node) => {
+            const style = node.style as any
+            return style?.background || '#fff'
+          }}
+          maskColor="rgba(0, 0, 0, 0.1)"
+        />
+        <Background gap={12} size={1} />
+      </ReactFlow>
     </div>
   )
 }

@@ -15,10 +15,6 @@ export default function RootLayout({
 
   const navigation = [
     { name: '🔍 Execution Plan', href: '/' },
-    { name: '📊 Query Analyzer', href: '/query-analyzer' },
-    { name: '🎯 Index Advisor', href: '/index-advisor' },
-    { name: '⚡ Performance Tips', href: '/performance-tips' },
-    { name: '📚 SQL Library', href: '/sql-library' },
   ]
 
   return (
