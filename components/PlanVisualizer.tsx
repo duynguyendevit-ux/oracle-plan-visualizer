@@ -40,7 +40,10 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('width', width)
       .attr('height', height)
       .append('g')
-      .attr('transform', `translate(${width / 2},${margin.top})`)
+      .attr('transform', isHorizontal 
+        ? `translate(${margin.left},${height / 2})`
+        : `translate(${width / 2},${margin.top})`
+      )
 
     // Convert plan to hierarchy
     const root = d3.hierarchy(plan)
