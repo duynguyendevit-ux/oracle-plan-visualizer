@@ -20,7 +20,6 @@ export default function RootLayout({
     { name: '📝 SQL Extractor', href: '/sql-extractor' },
     { name: '🐛 Log Analyzer', href: '/log-analyzer' },
     { name: '⚙️ K8s Config', href: '/k8s-config' },
-    { name: '🔤 Case Converter', href: '/case-converter' },
     { name: '🔐 Hash Generator', href: '/hash-generator' },
     { name: '📝 Diff Viewer', href: '/diff-viewer' },
     { name: '🌍 URL Encoder', href: '/url-encoder' },
