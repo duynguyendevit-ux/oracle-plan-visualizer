@@ -1,24 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
-import ReactFlow, {
-  Node,
-  Edge,
-  Controls,
-  Background,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-  NodeProps,
-  useReactFlow,
-  getRectOfNodes,
-  getTransformForBounds,
-  ReactFlowProvider,
-} from 'reactflow'
-import dagre from 'dagre'
-import { toPng, toJpeg, toSvg } from 'html-to-image'
-import 'reactflow/dist/style.css'
+import { useEffect, useRef, useState } from 'react'
+import * as d3 from 'd3'
 
 interface PlanNode {
   operation: string
@@ -38,313 +21,238 @@ interface Props {
 type LayoutDirection = 'TB' | 'LR'
 type NodeStyle = 'detailed' | 'simple'
 
-interface CustomNodeData {
-  operation: string
-  options?: string
-  objectName?: string
-  cost?: number
-  cardinality?: number
-  filterPredicates?: string
-  styleType: NodeStyle
-}
-
-// Custom Node Component
-function CustomNode({ data }: NodeProps<CustomNodeData>) {
-  const { operation, options, objectName, cost, cardinality, filterPredicates, styleType } = data
-  
-  const isDeadCode = filterPredicates?.includes('NULL IS NOT NULL')
-  const isFullScan = operation === 'TABLE ACCESS' && options === 'FULL'
-  const isIndex = operation === 'INDEX'
-  
-  return (
-    <div style={{ fontSize: '12px', fontFamily: 'monospace', lineHeight: '1.4' }}>
-      <div>{operation}{options ? ` ${options}` : ''}</div>
-      
-      {objectName && (
-        <div style={{ fontWeight: 'bold', marginTop: '4px' }}>
-          {styleType === 'detailed' ? `📦 ${objectName}` : objectName}
-        </div>
-      )}
-      
-      {cost !== undefined && (
-        <div style={{ marginTop: '4px' }}>
-          {styleType === 'detailed' ? `💰 Cost: ${cost}` : `Cost: ${cost}`}
-          {cardinality ? ` | Rows: ${cardinality}` : ''}
-        </div>
-      )}
-      
-      {filterPredicates && (
-        <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
-          {isDeadCode 
-            ? (styleType === 'detailed' ? `⚠️ Dead Code: ${filterPredicates}` : `Dead: ${filterPredicates}`)
-            : (styleType === 'detailed' ? `🔍 ${filterPredicates}` : filterPredicates)
-          }
-        </div>
-      )}
-      
-      {isFullScan && (
-        <div style={{ marginTop: '4px', color: '#DC143C' }}>
-          {styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan'}
-        </div>
-      )}
-      
-      {isIndex && (
-        <div style={{ marginTop: '4px', color: '#32CD32' }}>
-          {styleType === 'detailed' ? '✅ Using Index' : 'Index'}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const nodeTypes = {
-  custom: CustomNode,
-}
-
-// Custom node colors based on type
-const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
-  if (styleType === 'simple') {
-    return {
-      background: '#fff',
-      border: '2px solid #333',
-      borderRadius: '50%',
-      padding: '10px',
-      fontSize: '12px',
-      fontFamily: 'monospace',
-      minWidth: '80px',
-      minHeight: '80px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      textAlign: 'center' as const,
-    }
-  }
-  
-  let backgroundColor = '#fff'
-  let borderColor = '#333'
-  
-  // Dead code
-  if (data.filterPredicates?.includes('NULL IS NOT NULL')) {
-    backgroundColor = '#FFB6C1'
-    borderColor = '#FF1493'
-  }
-  // Performance issue (full table scan)
-  else if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
-    backgroundColor = '#FF6B6B'
-    borderColor = '#DC143C'
-  }
-  // Index scan
-  else if (data.operation === 'INDEX') {
-    backgroundColor = '#87CEEB'
-    borderColor = '#4682B4'
-  }
-  // Active branch
-  else if (data.children && data.children.length > 0) {
-    backgroundColor = '#90EE90'
-    borderColor = '#32CD32'
-  }
-  
-  return {
-    background: backgroundColor,
-    border: `2px solid ${borderColor}`,
-    borderRadius: '8px',
-    padding: '10px',
-    fontSize: '12px',
-    fontFamily: 'monospace',
-    minWidth: '200px',
-  }
-}
-
-// Build label for node with HTML
-const getNodeLabel = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
-  const parts = []
-  
-  let label = data.operation
-  if (data.options) label += ` ${data.options}`
-  parts.push(`<div>${label}</div>`)
-  
-  if (data.objectName) {
-    const objectLabel = styleType === 'detailed' ? `📦 ${data.objectName}` : data.objectName
-    parts.push(`<div style="font-weight: bold; margin-top: 4px;">${objectLabel}</div>`)
-  }
-  
-  if (data.cost !== undefined) {
-    const costLine = styleType === 'detailed' ? `💰 Cost: ${data.cost}` : `Cost: ${data.cost}`
-    if (data.cardinality) {
-      parts.push(`<div style="margin-top: 4px;">${costLine} | Rows: ${data.cardinality}</div>`)
-    } else {
-      parts.push(`<div style="margin-top: 4px;">${costLine}</div>`)
-    }
-  }
-  
-  if (data.filterPredicates) {
-    const filterLabel = styleType === 'detailed' ? `🔍 ${data.filterPredicates}` : data.filterPredicates
-    if (data.filterPredicates.includes('NULL IS NOT NULL')) {
-      const deadLabel = styleType === 'detailed' ? `⚠️ Dead Code: ${data.filterPredicates}` : `Dead: ${data.filterPredicates}`
-      parts.push(`<div style="margin-top: 4px;">${deadLabel}</div>`)
-    } else {
-      parts.push(`<div style="margin-top: 4px; font-style: italic;">${filterLabel}</div>`)
-    }
-  }
-  
-  // Add performance hints
-  if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
-    const hint = styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan'
-    parts.push(`<div style="margin-top: 4px; color: #DC143C;">${hint}</div>`)
-  }
-  
-  if (data.operation === 'INDEX') {
-    const hint = styleType === 'detailed' ? '✅ Using Index' : 'Index'
-    parts.push(`<div style="margin-top: 4px; color: #32CD32;">${hint}</div>`)
-  }
-  
-  return parts.join('')
-}
-
-// Convert plan tree to ReactFlow nodes/edges with Dagre layout
-const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleType: NodeStyle = 'detailed') => {
-  const nodes: Node[] = []
-  const edges: Edge[] = []
-  let nodeId = 0
-  
-  // First pass: create nodes and edges
-  const traverse = (node: PlanNode, parentId: string | null) => {
-    const id = `node-${nodeId++}`
-    
-    nodes.push({
-      id,
-      type: 'custom',
-      data: {
-        operation: node.operation,
-        options: node.options,
-        objectName: node.objectName,
-        cost: node.cost,
-        cardinality: node.cardinality,
-        filterPredicates: node.filterPredicates,
-        styleType,
-      },
-      position: { x: 0, y: 0 }, // Will be set by Dagre
-      style: {
-        ...getNodeStyle(node, styleType),
-        width: 'auto',
-        minWidth: '250px',
-        maxWidth: '400px',
-      },
-      draggable: true,
-    })
-    
-    if (parentId) {
-      edges.push({
-        id: `edge-${parentId}-${id}`,
-        source: parentId,
-        target: id,
-        type: 'smoothstep',
-        animated: false,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-        },
-        style: { stroke: '#999', strokeWidth: 2 },
-      })
-    }
-    
-    if (node.children) {
-      node.children.forEach((child) => {
-        traverse(child, id)
-      })
-    }
-  }
-  
-  traverse(plan, null)
-  
-  // Apply Dagre layout
-  const dagreGraph = new dagre.graphlib.Graph()
-  dagreGraph.setDefaultEdgeLabel(() => ({}))
-  dagreGraph.setGraph({ rankdir: direction, nodesep: 100, ranksep: 150 })
-  
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: 250, height: 100 })
-  })
-  
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target)
-  })
-  
-  dagre.layout(dagreGraph)
-  
-  // Update node positions from Dagre
-  nodes.forEach((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id)
-    node.position = {
-      x: nodeWithPosition.x - 125,
-      y: nodeWithPosition.y - 50,
-    }
-  })
-  
-  return { nodes, edges }
-}
-
-function PlanVisualizerInner({ plan }: Props) {
+export default function PlanVisualizer({ plan }: Props) {
+  const svgRef = useRef<SVGSVGElement>(null)
   const [direction, setDirection] = useState<LayoutDirection>('TB')
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
-  const flowRef = useRef<HTMLDivElement>(null)
-  const { getNodes } = useReactFlow()
-  
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(
-    () => convertToFlow(plan, direction, nodeStyle), 
-    [plan, direction, nodeStyle]
-  )
-  
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  
-  // Update nodes when direction or style changes
+
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = convertToFlow(plan, direction, nodeStyle)
-    setNodes(newNodes)
-    setEdges(newEdges)
-  }, [direction, nodeStyle, plan, setNodes, setEdges])
-  
-  // Export to image using proper bounds
-  const exportToImage = useCallback(async (format: 'png' | 'jpeg' | 'svg') => {
-    const nodesBounds = getRectOfNodes(getNodes())
-    const transform = getTransformForBounds(
-      nodesBounds,
-      nodesBounds.width,
-      nodesBounds.height,
-      0.5,
-      2,
-      0.1
-    )
+    if (!svgRef.current || !plan) return
+
+    // Clear previous
+    d3.select(svgRef.current).selectAll('*').remove()
+
+    const width = 1400
+    const height = 800
+    const margin = { top: 20, right: 120, bottom: 20, left: 120 }
+
+    const svg = d3.select(svgRef.current)
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    // Convert plan to hierarchy
+    const root = d3.hierarchy(plan)
     
-    const viewport = document.querySelector('.react-flow__viewport') as HTMLElement
-    if (!viewport) return
-    
-    const exportFunc = format === 'png' ? toPng : format === 'jpeg' ? toJpeg : toSvg
-    
-    try {
-      const dataUrl = await exportFunc(viewport, {
-        backgroundColor: '#fef7ff',
-        width: nodesBounds.width * 2,
-        height: nodesBounds.height * 2,
-        style: {
-          width: `${nodesBounds.width * 2}px`,
-          height: `${nodesBounds.height * 2}px`,
-          transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
-        },
-      })
+    // Create tree layout
+    const isHorizontal = direction === 'LR'
+    const treeLayout = d3.tree<PlanNode>()
+      .size(isHorizontal 
+        ? [height - margin.top - margin.bottom, width - margin.left - margin.right]
+        : [width - margin.left - margin.right, height - margin.top - margin.bottom]
+      )
+
+    treeLayout(root)
+
+    // Determine node type for coloring
+    const getNodeType = (node: d3.HierarchyNode<PlanNode>) => {
+      const data = node.data
       
-      const link = document.createElement('a')
-      link.download = `execution-plan.${format}`
-      link.href = dataUrl
-      link.click()
-    } catch (err) {
-      console.error('Export failed:', err)
+      if (data.filterPredicates?.includes('NULL IS NOT NULL')) {
+        return 'dead'
+      }
+      
+      if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
+        return 'issue'
+      }
+      
+      if (data.operation === 'INDEX') {
+        return 'index'
+      }
+      
+      if (node.children && node.children.length > 0) {
+        const hasDeadChildren = node.children.some(c => 
+          c.data.filterPredicates?.includes('NULL IS NOT NULL')
+        )
+        if (!hasDeadChildren) return 'active'
+      }
+      
+      return 'default'
     }
-  }, [getNodes])
-  
+
+    // Draw links with arrows
+    const linkGenerator = isHorizontal
+      ? d3.linkHorizontal<any, d3.HierarchyPointNode<PlanNode>>()
+          .x(d => d.y)
+          .y(d => d.x)
+      : d3.linkVertical<any, d3.HierarchyPointNode<PlanNode>>()
+          .x(d => d.x)
+          .y(d => d.y)
+
+    svg.selectAll('.link')
+      .data(root.links())
+      .enter()
+      .append('path')
+      .attr('class', 'link')
+      .attr('fill', 'none')
+      .attr('stroke', '#999')
+      .attr('stroke-width', 2)
+      .attr('d', linkGenerator)
+      .attr('marker-end', 'url(#arrowhead)')
+
+    // Add arrowhead marker
+    svg.append('defs').append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 8)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', '#999')
+
+    // Draw nodes
+    const node = svg.selectAll('.node')
+      .data(root.descendants())
+      .enter()
+      .append('g')
+      .attr('class', 'node')
+      .attr('transform', d => isHorizontal ? `translate(${d.y},${d.x})` : `translate(${d.x},${d.y})`)
+
+    // Node circles
+    node.append('circle')
+      .attr('r', nodeStyle === 'simple' ? 8 : 6)
+      .attr('fill', d => {
+        if (nodeStyle === 'simple') return '#fff'
+        const type = getNodeType(d)
+        switch(type) {
+          case 'active': return '#90EE90'
+          case 'dead': return '#FFB6C1'
+          case 'issue': return '#FF6B6B'
+          case 'index': return '#87CEEB'
+          default: return '#fff'
+        }
+      })
+      .attr('stroke', '#333')
+      .attr('stroke-width', 2)
+      .style('cursor', 'pointer')
+      .append('title')
+      .text(d => {
+        const lines = []
+        lines.push(`Operation: ${d.data.operation}`)
+        if (d.data.options) lines.push(`Options: ${d.data.options}`)
+        if (d.data.objectName) lines.push(`Object: ${d.data.objectName}`)
+        if (d.data.cost !== undefined) lines.push(`Cost: ${d.data.cost}`)
+        if (d.data.cardinality) lines.push(`Rows: ${d.data.cardinality}`)
+        if (d.data.cpuCost) lines.push(`CPU Cost: ${d.data.cpuCost}`)
+        if (d.data.filterPredicates) lines.push(`Filter: ${d.data.filterPredicates}`)
+        return lines.join('\n')
+      })
+
+    // Node labels
+    node.append('text')
+      .attr('dy', '.35em')
+      .attr('x', d => d.children ? -10 : 10)
+      .style('text-anchor', d => d.children ? 'end' : 'start')
+      .style('font-size', '12px')
+      .style('font-family', 'monospace')
+      .each(function(d) {
+        const text = d3.select(this)
+        const lines = []
+        
+        let label = d.data.operation
+        if (d.data.options) label += ` ${d.data.options}`
+        lines.push(label)
+        
+        if (d.data.objectName) {
+          lines.push(nodeStyle === 'detailed' ? `📦 ${d.data.objectName}` : d.data.objectName)
+        }
+        
+        if (d.data.cost !== undefined) {
+          const costLine = nodeStyle === 'detailed' ? `💰 Cost: ${d.data.cost}` : `Cost: ${d.data.cost}`
+          if (d.data.cardinality) {
+            lines.push(`${costLine}, Rows: ${d.data.cardinality}`)
+          } else {
+            lines.push(costLine)
+          }
+        }
+        
+        if (d.data.filterPredicates) {
+          if (d.data.filterPredicates.includes('NULL IS NOT NULL')) {
+            lines.push(nodeStyle === 'detailed' ? `⚠️ Dead Code` : 'Dead Code')
+          } else {
+            lines.push(nodeStyle === 'detailed' ? `🔍 ${d.data.filterPredicates}` : d.data.filterPredicates)
+          }
+        }
+        
+        // Render multi-line
+        lines.forEach((line, i) => {
+          const tspan = text.append('tspan')
+            .attr('x', d.children ? -10 : 10)
+            .attr('dy', i === 0 ? 0 : '1.2em')
+            .text(line)
+          
+          // Bold table/index names
+          if (i === 1 && d.data.objectName) {
+            tspan.style('font-weight', 'bold')
+          }
+          
+          // Italic filters
+          if (i > 1 && d.data.filterPredicates && !d.data.filterPredicates.includes('NULL IS NOT NULL')) {
+            tspan.style('font-style', 'italic')
+          }
+        })
+      })
+
+  }, [plan, direction, nodeStyle])
+
+  // Export to image
+  const exportToImage = (format: 'png' | 'svg') => {
+    if (!svgRef.current) return
+    
+    const svgData = new XMLSerializer().serializeToString(svgRef.current)
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const svgUrl = URL.createObjectURL(svgBlob)
+    
+    if (format === 'svg') {
+      const link = document.createElement('a')
+      link.href = svgUrl
+      link.download = 'execution-plan.svg'
+      link.click()
+      URL.revokeObjectURL(svgUrl)
+    } else {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = svgRef.current!.clientWidth
+        canvas.height = svgRef.current!.clientHeight
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = '#fef7ff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'execution-plan.png'
+            link.click()
+            URL.revokeObjectURL(url)
+          }
+        })
+        URL.revokeObjectURL(svgUrl)
+      }
+      img.src = svgUrl
+    }
+  }
+
   return (
-    <div ref={flowRef} style={{ width: '100%', height: '800px', position: 'relative' }}>
-      {/* Layout Toggle */}
+    <div style={{ width: '100%', height: '800px', position: 'relative' }}>
+      {/* Controls */}
       <div style={{ 
         position: 'absolute', 
         top: '10px', 
@@ -466,22 +374,6 @@ function PlanVisualizerInner({ plan }: Props) {
             📷 PNG
           </button>
           <button
-            onClick={() => exportToImage('jpeg')}
-            style={{
-              padding: '6px 12px',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: '500',
-              background: '#e8e1e8',
-              color: '#1d1b20',
-              transition: 'all 0.2s'
-            }}
-          >
-            🖼️ JPEG
-          </button>
-          <button
             onClick={() => exportToImage('svg')}
             style={{
               padding: '6px 12px',
@@ -500,48 +392,9 @@ function PlanVisualizerInner({ plan }: Props) {
         </div>
       </div>
       
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        nodesDraggable={true}
-        nodesConnectable={false}
-        elementsSelectable={true}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        attributionPosition="bottom-left"
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#999', strokeWidth: 2 },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: '#999',
-          },
-        }}
-      >
-        <Controls />
-        <MiniMap 
-          nodeColor={(node) => {
-            const style = node.style as any
-            return style?.background || '#fff'
-          }}
-          maskColor="rgba(0, 0, 0, 0.1)"
-        />
-        <Background gap={12} size={1} />
-      </ReactFlow>
+      <div className="overflow-auto" style={{ width: '100%', height: '100%' }}>
+        <svg ref={svgRef} className="border rounded"></svg>
+      </div>
     </div>
-  )
-}
-
-export default function PlanVisualizer({ plan }: Props) {
-  return (
-    <ReactFlowProvider>
-      <PlanVisualizerInner plan={plan} />
-    </ReactFlowProvider>
   )
 }
