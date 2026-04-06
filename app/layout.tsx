@@ -15,7 +15,7 @@ export default function RootLayout({
   const pathname = usePathname()
 
   const navigation = [
-    { name: '🔍 Execution Plan', href: '/' },
+    { name: '🔍 Execution Plan Visual', href: '/' },
     { name: '📝 SQL Extractor', href: '/sql-extractor' },
     { name: '🐛 Log Analyzer', href: '/log-analyzer' },
   ]
