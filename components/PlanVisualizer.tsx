@@ -512,6 +512,17 @@ function PlanVisualizerInner({ plan }: Props) {
         fitView
         fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-left"
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#999', strokeWidth: 2 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 20,
+            height: 20,
+            color: '#999',
+          },
+        }}
       >
         <Controls />
         <MiniMap 
