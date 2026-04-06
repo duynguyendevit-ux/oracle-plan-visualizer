@@ -144,13 +144,13 @@ export default function SQLExtractor() {
             <div className="flex gap-2">
               <button
                 onClick={formatSQL}
-                className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-medium transition-colors"
               >
                 Format
               </button>
               <button
                 onClick={copyToClipboard}
-                className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
+                className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors"
               >
                 Copy
               </button>
