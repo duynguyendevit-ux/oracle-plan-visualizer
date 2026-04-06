@@ -29,8 +29,8 @@ export default function RootLayout({
                 <span className="text-xl">📊</span>
               </div>
               <div>
-                <h1 className="text-lg font-serif font-semibold text-on-surface">Oracle Plan</h1>
-                <p className="text-xs font-label text-on-surface-variant">Visualizer</p>
+                <h1 className="text-lg font-serif font-semibold text-on-surface">MyDevTools</h1>
+                <p className="text-xs font-label text-on-surface-variant">Oracle Plan Visualizer</p>
               </div>
             </div>
 
@@ -57,7 +57,7 @@ export default function RootLayout({
             {/* Footer */}
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-surface-container">
               <div className="text-xs font-label text-on-surface-variant">
-                <p className="font-medium">Oracle Plan Visualizer</p>
+                <p className="font-medium">MyDevTools</p>
                 <p className="text-outline">v2.0.0 • Alexandria</p>
               </div>
             </div>
