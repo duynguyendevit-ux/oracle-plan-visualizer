@@ -189,7 +189,7 @@ export default function Home() {
           
           <button
             onClick={handleParse}
-            className="mt-3 w-full bg-gradient-to-r from-primary to-primary-container text-white py-2.5 rounded-lg hover:opacity-90 font-semibold transition-opacity shadow-editorial"
+            className="mt-3 w-full bg-primary text-white py-2.5 rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-warm"
           >
             Visualize Plan
           </button>
