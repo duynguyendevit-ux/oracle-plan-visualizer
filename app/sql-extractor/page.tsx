@@ -54,8 +54,23 @@ export default function SQLExtractor() {
       bindings.sort((a, b) => a.index - b.index)
       bindings.forEach(binding => {
         const value = binding.value
-        // Format value based on type
-        const formattedValue = /^\d+$/.test(value) ? value : `'${value}'`
+        let formattedValue: string
+        
+        // Check if it's a timestamp/date
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+          // Convert ISO timestamp to Oracle TIMESTAMP format
+          const cleanDate = value.replace('T', ' ').replace(/\[.*?\]$/, '')
+          formattedValue = `TIMESTAMP '${cleanDate}'`
+        }
+        // Check if it's a number
+        else if (/^\d+$/.test(value)) {
+          formattedValue = value
+        }
+        // String value
+        else {
+          formattedValue = `'${value}'`
+        }
+        
         sql = sql.replace('?', formattedValue)
       })
     }
