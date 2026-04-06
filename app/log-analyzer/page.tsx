@@ -330,7 +330,7 @@ export default function LogAnalyzer() {
                       }`}>
                         {entry.level}
                       </span>
-                      <span className="text-xs text-warm-600 font-mono">{entry.timestamp}</span>
+                      <span className="text-xs text-warm-600 font-mono font-bold">{entry.timestamp}</span>
                       <span className="text-xs text-warm-500 ml-auto">Line {entry.line}</span>
                     </div>
                     <div className="text-sm font-mono text-warm-800 mb-2">{entry.message}</div>
