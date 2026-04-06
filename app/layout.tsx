@@ -19,6 +19,7 @@ export default function RootLayout({
     { name: '🔍 Execution Plan Visual', href: '/' },
     { name: '📝 SQL Extractor', href: '/sql-extractor' },
     { name: '🐛 Log Analyzer', href: '/log-analyzer' },
+    { name: '☸️ K8s Config', href: '/k8s-config' },
   ]
 
   return (
