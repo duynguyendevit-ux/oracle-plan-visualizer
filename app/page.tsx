@@ -132,64 +132,64 @@ export default function Home() {
   }
 
   return (
-    <div className="p-3">
+    <div className="p-8">
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-          <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total Cost</div>
-            <div className="text-xl font-bold text-slate-900">{stats.totalCost}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-8">
+          <div className="bg-warm-50 rounded-lg p-6 shadow-warm border border-warm-300/60">
+            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">Total Cost</div>
+            <div className="text-3xl font-serif font-semibold text-warm-800">{stats.totalCost}</div>
           </div>
-          <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">CPU Cost</div>
-            <div className="text-xl font-bold text-slate-900">{stats.totalCpu.toLocaleString()}</div>
+          <div className="bg-warm-50 rounded-lg p-6 shadow-warm border border-warm-300/60">
+            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">CPU Cost</div>
+            <div className="text-3xl font-serif font-semibold text-warm-800">{stats.totalCpu.toLocaleString()}</div>
           </div>
-          <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Dead Branches</div>
-            <div className="text-xl font-bold text-pink-600">{stats.deadBranches}</div>
+          <div className="bg-warm-50 rounded-lg p-6 shadow-warm border border-warm-300/60">
+            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">Dead Branches</div>
+            <div className="text-3xl font-serif font-semibold text-tertiary">{stats.deadBranches}</div>
           </div>
-          <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Full Scans</div>
-            <div className="text-xl font-bold text-red-600">{stats.fullScans}</div>
+          <div className="bg-warm-50 rounded-lg p-6 shadow-warm border border-warm-300/60">
+            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">Full Scans</div>
+            <div className="text-3xl font-serif font-semibold text-tertiary">{stats.fullScans}</div>
           </div>
-          <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Index Scans</div>
-            <div className="text-xl font-bold text-blue-600">{stats.indexScans}</div>
+          <div className="bg-warm-50 rounded-lg p-6 shadow-warm border border-warm-300/60">
+            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">Index Scans</div>
+            <div className="text-3xl font-serif font-semibold text-primary">{stats.indexScans}</div>
           </div>
         </div>
       )}
 
       {/* Input Panel */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden mb-3">
-        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
+      <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden mb-8">
+        <div className="bg-warm-100/50 px-6 py-4 border-b border-warm-300/60">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Execution Plan JSON</h3>
+            <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Execution Plan JSON</h3>
             <button
               onClick={loadSample}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors"
             >
               Load Sample
             </button>
           </div>
         </div>
         
-        <div className="p-4">
+        <div className="p-8">
           <textarea
             value={planJson}
             onChange={(e) => setPlanJson(e.target.value)}
             placeholder="Paste your Oracle execution plan JSON here..."
-            className="w-full h-48 p-3 border border-slate-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full h-48 p-4 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
           />
           
           {error && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mt-4 p-4 bg-tertiary/10 border border-tertiary/30 text-tertiary rounded text-sm">
               {error}
             </div>
           )}
           
           <button
             onClick={handleParse}
-            className="mt-3 w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 font-semibold transition-colors"
+            className="mt-4 w-full bg-primary text-white py-3 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm"
           >
             Visualize Plan
           </button>
@@ -197,42 +197,42 @@ export default function Home() {
       </div>
 
       {/* Visualization Panel */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
-          <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Execution Tree</h3>
+      <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
+        <div className="bg-warm-100/50 px-6 py-4 border-b border-warm-300/60 flex justify-between items-center">
+          <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Execution Tree</h3>
           
           {/* Legend inline */}
           {parsedPlan && (
-            <div className="flex gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-green-400 border border-slate-800 rounded-full"></div>
-                <span className="text-xs text-slate-700">Active</span>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-400 border border-warm-800 rounded-full"></div>
+                <span className="text-xs text-warm-700">Active</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-pink-300 border border-slate-800 rounded-full"></div>
-                <span className="text-xs text-slate-700">Dead</span>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-pink-300 border border-warm-800 rounded-full"></div>
+                <span className="text-xs text-warm-700">Dead</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-red-400 border border-slate-800 rounded-full"></div>
-                <span className="text-xs text-slate-700">Issue</span>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-tertiary border border-warm-800 rounded-full"></div>
+                <span className="text-xs text-warm-700">Issue</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-blue-300 border border-slate-800 rounded-full"></div>
-                <span className="text-xs text-slate-700">Index</span>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-primary border border-warm-800 rounded-full"></div>
+                <span className="text-xs text-warm-700">Index</span>
               </div>
             </div>
           )}
         </div>
         
-        <div className="p-4">
+        <div className="p-8">
           {parsedPlan ? (
             <PlanVisualizer plan={parsedPlan} />
           ) : (
-            <div className="h-96 flex flex-col items-center justify-center text-slate-400">
+            <div className="h-96 flex flex-col items-center justify-center text-warm-400">
               <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
               </svg>
-              <p className="text-sm">Paste JSON and click "Visualize Plan"</p>
+              <p className="text-sm font-serif">Paste JSON and click "Visualize Plan"</p>
             </div>
           )}
         </div>
