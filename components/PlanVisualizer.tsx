@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -164,6 +164,13 @@ export default function PlanVisualizer({ plan }: Props) {
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  
+  // Update nodes when direction changes
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = convertToFlow(plan, direction)
+    setNodes(newNodes)
+    setEdges(newEdges)
+  }, [direction, plan, setNodes, setEdges])
   
   return (
     <div style={{ width: '100%', height: '800px', position: 'relative' }}>
