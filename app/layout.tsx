@@ -11,6 +11,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const pathname = usePathname()
 
   const navigation = [
@@ -23,51 +24,74 @@ export default function RootLayout({
       <body className="bg-background">
         <div className="flex h-screen overflow-hidden">
           {/* Sidebar */}
-          <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-surface-container-low transition-transform duration-300 ease-in-out`}>
+          <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-warm-50 border-r border-warm-300/60 transition-all duration-300 ease-in-out`}>
             {/* Logo */}
-            <div className="h-16 flex items-center gap-3 px-6 bg-surface-container">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-editorial">
-                <span className="text-xl">📊</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-serif font-semibold text-on-surface">MyDevTools</h1>
-                <p className="text-xs font-label text-on-surface-variant">Oracle Plan Visualizer</p>
-              </div>
+            <div className="h-16 flex items-center gap-3 px-6 bg-warm-100/50 border-b border-warm-300/60">
+              {!sidebarCollapsed && (
+                <>
+                  <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-warm">
+                    <span className="text-xl">🛠️</span>
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-serif font-semibold text-warm-800">MyDevTools</h1>
+                    <p className="text-xs text-warm-600">Oracle Plan Visualizer</p>
+                  </div>
+                </>
+              )}
+              {sidebarCollapsed && (
+                <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-warm mx-auto">
+                  <span className="text-xl">🛠️</span>
+                </div>
+              )}
             </div>
 
             {/* Navigation */}
-            <nav className="p-6 space-y-2">
+            <nav className="p-4 space-y-1">
               {navigation.map((item) => {
                 const isActive = pathname === item.href
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`block px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    className={`block px-4 py-3 rounded text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-primary-container text-primary shadow-editorial'
-                        : 'text-on-surface-variant hover:bg-surface-container-high'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-warm-700 hover:bg-warm-100'
                     }`}
+                    title={sidebarCollapsed ? item.name : undefined}
                   >
-                    {item.name}
+                    {sidebarCollapsed ? item.name.split(' ')[0] : item.name}
                   </Link>
                 )
               })}
             </nav>
 
+            {/* Toggle Button */}
+            <div className="absolute bottom-20 left-0 right-0 px-4">
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="w-full px-4 py-2 rounded text-sm font-medium text-warm-700 hover:bg-warm-100 transition-colors flex items-center justify-center gap-2"
+              >
+                {sidebarCollapsed ? '➡️' : '⬅️'}
+                {!sidebarCollapsed && <span>Collapse</span>}
+              </button>
+            </div>
+
             {/* Footer */}
-            <div className="absolute bottom-0 left-0 right-0 p-6 bg-surface-container">
-              <div className="text-xs font-label text-on-surface-variant">
-                <p className="font-medium">MyDevTools</p>
-                <p className="text-outline">v2.0.0 • Alexandria</p>
-              </div>
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-warm-300/60">
+              {!sidebarCollapsed && (
+                <div className="text-xs text-warm-600">
+                  <p className="font-medium">MyDevTools</p>
+                  <p>v2.0.0</p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Mobile overlay */}
           {sidebarOpen && (
             <div
-              className="fixed inset-0 bg-on-surface/20 backdrop-blur-glass z-40 lg:hidden"
+              className="fixed inset-0 bg-warm-900/20 z-40 lg:hidden"
               onClick={() => setSidebarOpen(false)}
             />
           )}
@@ -75,19 +99,19 @@ export default function RootLayout({
           {/* Main content */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Top bar */}
-            <div className="h-16 bg-surface-container-low flex items-center px-6">
+            <div className="h-16 bg-warm-50 border-b border-warm-300/60 flex items-center px-6">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden mr-4 p-2 rounded-lg hover:bg-surface-container-high"
+                className="lg:hidden mr-4 p-2 rounded hover:bg-warm-100"
               >
-                <svg className="w-6 h-6 text-on-surface" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-warm-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               
               <div className="flex-1">
-                <h2 className="text-2xl font-serif font-semibold text-on-surface">
-                  {navigation.find(n => n.href === pathname)?.name || 'Oracle Plan Visualizer'}
+                <h2 className="text-xl font-serif font-semibold text-warm-800">
+                  {navigation.find(n => n.href === pathname)?.name || 'MyDevTools'}
                 </h2>
               </div>
             </div>
