@@ -34,7 +34,7 @@ export default function PlanVisualizer({ plan }: Props) {
 
     const width = window.innerWidth - 100
     const height = 1200
-    const margin = { top: 40, right: 200, bottom: 40, left: 200 }
+    const margin = { top: 40, right: 100, bottom: 40, left: 100 }
 
     const svg = d3.select(svgRef.current)
       .attr('width', width)
@@ -52,7 +52,7 @@ export default function PlanVisualizer({ plan }: Props) {
         ? [height - margin.top - margin.bottom, width - margin.left - margin.right]
         : [width - margin.left - margin.right, height - margin.top - margin.bottom]
       )
-      .nodeSize(isHorizontal ? [80, 200] : [200, 80])
+      .nodeSize(isHorizontal ? [60, 180] : [180, 60])
 
     treeLayout(root)
 
