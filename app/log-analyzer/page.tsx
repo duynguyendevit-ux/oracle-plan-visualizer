@@ -16,6 +16,27 @@ export default function LogAnalyzer() {
   const [filterLevel, setFilterLevel] = useState<string>('ALL')
   const [results, setResults] = useState<LogEntry[]>([])
   const [stats, setStats] = useState<any>(null)
+  const [error, setError] = useState<string>('')
+
+  const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File too large! Maximum size is 20MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+      e.target.value = ''
+      return
+    }
+
+    setError('')
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setInput(event.target?.result as string)
+    }
+    reader.readAsText(file)
+  }
 
   const analyzeLogs = () => {
     const lines = input.split('\n')
@@ -158,10 +179,28 @@ export default function LogAnalyzer() {
           </div>
           
           <div className="p-4">
+            {error && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm">
+                ⚠️ {error}
+              </div>
+            )}
+            
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-warm-700 mb-2">
+                Upload Log File (Max 20MB)
+              </label>
+              <input
+                type="file"
+                accept=".log,.txt,.json"
+                onChange={handleFileUpload}
+                className="block w-full text-sm text-warm-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
+              />
+            </div>
+            
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Paste Spring Boot logs here..."
+              placeholder="Paste Spring Boot logs here or upload a file..."
               className="w-full h-96 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
             
