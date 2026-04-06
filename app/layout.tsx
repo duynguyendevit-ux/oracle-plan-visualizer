@@ -35,7 +35,6 @@ export default function RootLayout({
                   </div>
                   <div>
                     <h1 className="text-lg font-serif font-semibold text-warm-800">MyDevTools</h1>
-                    <p className="text-xs text-warm-600">Oracle Plan Visualizer</p>
                   </div>
                 </>
               )}
