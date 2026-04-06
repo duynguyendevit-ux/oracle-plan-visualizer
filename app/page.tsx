@@ -224,7 +224,7 @@ export default function Home() {
           )}
         </div>
         
-        <div className="p-4">
+        <div className="p-2">
           {parsedPlan ? (
             <PlanVisualizer plan={parsedPlan} />
           ) : (
