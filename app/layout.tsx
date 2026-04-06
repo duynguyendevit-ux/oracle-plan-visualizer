@@ -82,19 +82,6 @@ export default function RootLayout({
               </button>
             </div>
 
-            {/* Dark Mode Toggle */}
-            <div className="absolute bottom-12 left-0 right-0 px-4">
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className={`w-full px-4 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-warm-700 hover:bg-warm-100'
-                }`}
-              >
-                {darkMode ? '☀️' : '🌙'}
-                {!sidebarCollapsed && <span>{darkMode ? 'Light' : 'Dark'}</span>}
-              </button>
-            </div>
-
             {/* Footer */}
             <div className={`absolute bottom-0 left-0 right-0 p-4 ${darkMode ? 'border-gray-700' : 'border-warm-300/60'} border-t`}>
               {!sidebarCollapsed && (
@@ -132,6 +119,17 @@ export default function RootLayout({
                   {navigation.find(n => n.href === pathname)?.name || 'MyDevTools'}
                 </h2>
               </div>
+              
+              {/* Dark Mode Toggle */}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-2 rounded-lg transition-colors ${
+                  darkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-gray-700 hover:bg-warm-100'
+                }`}
+                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
             </div>
 
             {/* Page content */}
