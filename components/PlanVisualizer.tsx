@@ -113,6 +113,18 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('stroke', '#333')
       .attr('stroke-width', 2)
       .style('cursor', 'pointer')
+      .append('title')
+      .text(d => {
+        const lines = []
+        lines.push(`Operation: ${d.data.operation}`)
+        if (d.data.options) lines.push(`Options: ${d.data.options}`)
+        if (d.data.objectName) lines.push(`Object: ${d.data.objectName}`)
+        if (d.data.cost !== undefined) lines.push(`Cost: ${d.data.cost}`)
+        if (d.data.cardinality) lines.push(`Rows: ${d.data.cardinality}`)
+        if (d.data.cpuCost) lines.push(`CPU Cost: ${d.data.cpuCost}`)
+        if (d.data.filterPredicates) lines.push(`Filter: ${d.data.filterPredicates}`)
+        return lines.join('\n')
+      })
 
     // Node labels
     node.append('text')
