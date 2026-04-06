@@ -33,7 +33,7 @@ export default function PlanVisualizer({ plan }: Props) {
     d3.select(svgRef.current).selectAll('*').remove()
 
     const width = window.innerWidth - 100
-    const height = 800
+    const height = 1200
     const margin = { top: 20, right: 120, bottom: 20, left: 120 }
 
     const svg = d3.select(svgRef.current)
@@ -251,7 +251,7 @@ export default function PlanVisualizer({ plan }: Props) {
   }
 
   return (
-    <div style={{ width: '100%', height: '800px', position: 'relative' }}>
+    <div style={{ width: '100%', height: '1200px', position: 'relative' }}>
       {/* Controls */}
       <div style={{ 
         position: 'absolute', 
