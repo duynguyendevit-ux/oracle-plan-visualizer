@@ -131,7 +131,7 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('dy', '.35em')
       .attr('x', d => d.children ? -10 : 10)
       .style('text-anchor', d => d.children ? 'end' : 'start')
-      .style('font-size', '11px')
+      .style('font-size', '12px')
       .style('font-family', 'monospace')
       .each(function(d) {
         const text = d3.select(this)
@@ -140,18 +140,32 @@ export default function PlanVisualizer({ plan }: Props) {
         // Build label
         let label = d.data.operation
         if (d.data.options) label += ` ${d.data.options}`
-        if (d.data.objectName) label += `\n${d.data.objectName}`
-        if (d.data.cost !== undefined) label += `\nCost: ${d.data.cost}`
-        if (d.data.cardinality) label += `, Rows: ${d.data.cardinality}`
-        
-        lines.push(...label.split('\n'))
+        if (d.data.objectName) {
+          lines.push(label)
+          lines.push(d.data.objectName) // Table/index name on separate line
+        } else {
+          lines.push(label)
+        }
+        if (d.data.cost !== undefined) {
+          const costLine = `Cost: ${d.data.cost}`
+          if (d.data.cardinality) {
+            lines.push(`${costLine}, Rows: ${d.data.cardinality}`)
+          } else {
+            lines.push(costLine)
+          }
+        }
         
         // Render multi-line
         lines.forEach((line, i) => {
-          text.append('tspan')
+          const tspan = text.append('tspan')
             .attr('x', d.children ? -10 : 10)
             .attr('dy', i === 0 ? 0 : '1.2em')
             .text(line)
+          
+          // Bold table/index names (second line if objectName exists)
+          if (i === 1 && d.data.objectName) {
+            tspan.style('font-weight', 'bold')
+          }
         })
       })
 

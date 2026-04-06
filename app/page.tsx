@@ -173,7 +173,7 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="p-8">
+        <div className="p-10">
           <textarea
             value={planJson}
             onChange={(e) => setPlanJson(e.target.value)}
@@ -224,7 +224,7 @@ export default function Home() {
           )}
         </div>
         
-        <div className="p-8">
+        <div className="p-12">
           {parsedPlan ? (
             <PlanVisualizer plan={parsedPlan} />
           ) : (
