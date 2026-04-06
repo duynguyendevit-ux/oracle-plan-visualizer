@@ -10,6 +10,7 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   MarkerType,
+  NodeProps,
 } from 'reactflow'
 import dagre from 'dagre'
 import 'reactflow/dist/style.css'
@@ -31,6 +32,69 @@ interface Props {
 
 type LayoutDirection = 'TB' | 'LR'
 type NodeStyle = 'detailed' | 'simple'
+
+interface CustomNodeData {
+  operation: string
+  options?: string
+  objectName?: string
+  cost?: number
+  cardinality?: number
+  filterPredicates?: string
+  styleType: NodeStyle
+}
+
+// Custom Node Component
+function CustomNode({ data }: NodeProps<CustomNodeData>) {
+  const { operation, options, objectName, cost, cardinality, filterPredicates, styleType } = data
+  
+  const isDeadCode = filterPredicates?.includes('NULL IS NOT NULL')
+  const isFullScan = operation === 'TABLE ACCESS' && options === 'FULL'
+  const isIndex = operation === 'INDEX'
+  
+  return (
+    <div style={{ fontSize: '12px', fontFamily: 'monospace', lineHeight: '1.4' }}>
+      <div>{operation}{options ? ` ${options}` : ''}</div>
+      
+      {objectName && (
+        <div style={{ fontWeight: 'bold', marginTop: '4px' }}>
+          {styleType === 'detailed' ? `📦 ${objectName}` : objectName}
+        </div>
+      )}
+      
+      {cost !== undefined && (
+        <div style={{ marginTop: '4px' }}>
+          {styleType === 'detailed' ? `💰 Cost: ${cost}` : `Cost: ${cost}`}
+          {cardinality ? ` | Rows: ${cardinality}` : ''}
+        </div>
+      )}
+      
+      {filterPredicates && (
+        <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
+          {isDeadCode 
+            ? (styleType === 'detailed' ? `⚠️ Dead Code: ${filterPredicates}` : `Dead: ${filterPredicates}`)
+            : (styleType === 'detailed' ? `🔍 ${filterPredicates}` : filterPredicates)
+          }
+        </div>
+      )}
+      
+      {isFullScan && (
+        <div style={{ marginTop: '4px', color: '#DC143C' }}>
+          {styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan'}
+        </div>
+      )}
+      
+      {isIndex && (
+        <div style={{ marginTop: '4px', color: '#32CD32' }}>
+          {styleType === 'detailed' ? '✅ Using Index' : 'Index'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const nodeTypes = {
+  custom: CustomNode,
+}
 
 // Custom node colors based on type
 const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
@@ -86,46 +150,50 @@ const getNodeStyle = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
   }
 }
 
-// Build label for node
+// Build label for node with HTML
 const getNodeLabel = (data: PlanNode, styleType: NodeStyle = 'detailed') => {
-  const lines = []
+  const parts = []
   
   let label = data.operation
   if (data.options) label += ` ${data.options}`
-  lines.push(label)
+  parts.push(`<div>${label}</div>`)
   
   if (data.objectName) {
-    lines.push(styleType === 'detailed' ? `📦 ${data.objectName}` : data.objectName)
+    const objectLabel = styleType === 'detailed' ? `📦 ${data.objectName}` : data.objectName
+    parts.push(`<div style="font-weight: bold; margin-top: 4px;">${objectLabel}</div>`)
   }
   
   if (data.cost !== undefined) {
     const costLine = styleType === 'detailed' ? `💰 Cost: ${data.cost}` : `Cost: ${data.cost}`
     if (data.cardinality) {
-      lines.push(`${costLine} | Rows: ${data.cardinality}`)
+      parts.push(`<div style="margin-top: 4px;">${costLine} | Rows: ${data.cardinality}</div>`)
     } else {
-      lines.push(costLine)
+      parts.push(`<div style="margin-top: 4px;">${costLine}</div>`)
     }
   }
   
   if (data.filterPredicates) {
     const filterLabel = styleType === 'detailed' ? `🔍 ${data.filterPredicates}` : data.filterPredicates
     if (data.filterPredicates.includes('NULL IS NOT NULL')) {
-      lines.push(styleType === 'detailed' ? `⚠️ Dead Code: ${data.filterPredicates}` : `Dead: ${data.filterPredicates}`)
+      const deadLabel = styleType === 'detailed' ? `⚠️ Dead Code: ${data.filterPredicates}` : `Dead: ${data.filterPredicates}`
+      parts.push(`<div style="margin-top: 4px;">${deadLabel}</div>`)
     } else {
-      lines.push(filterLabel)
+      parts.push(`<div style="margin-top: 4px; font-style: italic;">${filterLabel}</div>`)
     }
   }
   
   // Add performance hints
   if (data.operation === 'TABLE ACCESS' && data.options === 'FULL') {
-    lines.push(styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan')
+    const hint = styleType === 'detailed' ? '⚠️ Full Table Scan' : 'Full Scan'
+    parts.push(`<div style="margin-top: 4px; color: #DC143C;">${hint}</div>`)
   }
   
   if (data.operation === 'INDEX') {
-    lines.push(styleType === 'detailed' ? '✅ Using Index' : 'Index')
+    const hint = styleType === 'detailed' ? '✅ Using Index' : 'Index'
+    parts.push(`<div style="margin-top: 4px; color: #32CD32;">${hint}</div>`)
   }
   
-  return lines.join('\n')
+  return parts.join('')
 }
 
 // Convert plan tree to ReactFlow nodes/edges with Dagre layout
@@ -140,16 +208,22 @@ const convertToFlow = (plan: PlanNode, direction: LayoutDirection = 'TB', styleT
     
     nodes.push({
       id,
-      type: 'default',
-      data: { label: getNodeLabel(node, styleType) },
+      type: 'custom',
+      data: {
+        operation: node.operation,
+        options: node.options,
+        objectName: node.objectName,
+        cost: node.cost,
+        cardinality: node.cardinality,
+        filterPredicates: node.filterPredicates,
+        styleType,
+      },
       position: { x: 0, y: 0 }, // Will be set by Dagre
       style: {
         ...getNodeStyle(node, styleType),
         width: 'auto',
         minWidth: '250px',
         maxWidth: '400px',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
       },
       draggable: true,
     })
@@ -327,6 +401,7 @@ export default function PlanVisualizer({ plan }: Props) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}
