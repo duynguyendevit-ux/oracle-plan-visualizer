@@ -114,7 +114,7 @@ export default function SQLExtractor() {
             <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Input (Logs/Code)</h3>
             <button
               onClick={() => setInput('')}
-              className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
+              className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 font-medium transition-colors"
             >
               Clear
             </button>
