@@ -18,6 +18,7 @@ export default function LogAnalyzer() {
   const [stats, setStats] = useState<any>(null)
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 
@@ -32,10 +33,27 @@ export default function LogAnalyzer() {
     }
 
     setError('')
+    setUploadProgress(0)
     const reader = new FileReader()
+    
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const progress = Math.round((event.loaded / event.total) * 100)
+        setUploadProgress(progress)
+      }
+    }
+    
     reader.onload = (event) => {
       setInput(event.target?.result as string)
+      setUploadProgress(100)
+      setTimeout(() => setUploadProgress(0), 1000)
     }
+    
+    reader.onerror = () => {
+      setError('Error reading file')
+      setUploadProgress(0)
+    }
+    
     reader.readAsText(file)
   }
 
@@ -221,6 +239,21 @@ export default function LogAnalyzer() {
             {error && (
               <div className="mb-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm">
                 ⚠️ {error}
+              </div>
+            )}
+            
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mb-3">
+                <div className="flex justify-between text-xs text-warm-600 mb-1">
+                  <span>Uploading...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-warm-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-primary h-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
               </div>
             )}
             
