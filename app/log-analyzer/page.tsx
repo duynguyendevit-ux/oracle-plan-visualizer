@@ -238,7 +238,7 @@ export default function LogAnalyzer() {
           <div className="p-4">
             {error && (
               <div className="mb-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm">
-                ⚠️ {error}
+                <span className="mr-2">⚠</span>{error}
               </div>
             )}
             
