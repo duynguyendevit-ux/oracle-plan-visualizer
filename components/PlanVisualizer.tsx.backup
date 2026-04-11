@@ -27,39 +27,15 @@ export default function PlanVisualizer({ plan }: Props) {
   const [direction, setDirection] = useState<LayoutDirection>('TB')
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
   const [zoomLevel, setZoomLevel] = useState(100)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
-  useEffect(() => {
-    // Set initial dimensions
-    if (containerRef.current) {
-      setDimensions({
-        width: containerRef.current.clientWidth,
-        height: containerRef.current.clientHeight
-      })
-    }
-    
-    // Handle resize
-    const handleResize = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight
-        })
-      }
-    }
-    
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-  
   useEffect(() => {
     if (!svgRef.current || !plan) return
 
     // Clear previous
     d3.select(svgRef.current).selectAll('*').remove()
 
-    const containerWidth = dimensions.width || window.innerWidth
-    const containerHeight = dimensions.height || 800
+    const containerWidth = containerRef.current?.clientWidth || window.innerWidth
+    const containerHeight = containerRef.current?.clientHeight || 800
     const margin = { top: 60, right: 120, bottom: 60, left: 120 }
 
     // Determine layout direction first
@@ -114,16 +90,11 @@ export default function PlanVisualizer({ plan }: Props) {
     const treeWidth = maxX - minX + margin.left + margin.right
     const treeHeight = maxY - minY + margin.top + margin.bottom
 
-    // Calculate scale factor to fit tree within container
-    const scaleX = (containerWidth - margin.left - margin.right) / treeWidth
-    const scaleY = (containerHeight - margin.top - margin.bottom) / treeHeight
-    const scale = Math.min(scaleX, scaleY, 1) // Don't scale up, only scale down if needed
-
-    // Center transform with scaling
-    const centerX = isHorizontal ? margin.left : (containerWidth - (maxX - minX) * scale) / 2
-    const centerY = isHorizontal ? (containerHeight - (maxY - minY) * scale) / 2 : margin.top
+    // Center transform
+    const centerX = isHorizontal ? margin.left : (containerWidth - (maxX + minX)) / 2
+    const centerY = isHorizontal ? (containerHeight - (maxY + minY)) / 2 : margin.top
     
-    g.attr('transform', `translate(${centerX}, ${centerY}) scale(${scale})`)
+    g.attr('transform', `translate(${centerX}, ${centerY})`)
 
     // Determine node type for coloring
     const getNodeType = (node: d3.HierarchyNode<PlanNode>) => {
@@ -277,66 +248,8 @@ export default function PlanVisualizer({ plan }: Props) {
         })
       })
 
-  }, [plan, direction, nodeStyle, dimensions])
+  }, [plan, direction, nodeStyle])
 
-  // Zoom to fit function
-  const zoomToFit = () => {
-    if (!svgRef.current || !plan) return
-    
-    const svg = d3.select(svgRef.current)
-    const containerWidth = containerRef.current?.clientWidth || window.innerWidth
-    const containerHeight = containerRef.current?.clientHeight || 800
-    const margin = { top: 60, right: 120, bottom: 60, left: 120 }
-    
-    const isHorizontal = direction === 'LR'
-    
-    // Convert plan to hierarchy
-    const root = d3.hierarchy(plan)
-    
-    // Create tree layout
-    const treeLayout = d3.tree<PlanNode>()
-      .nodeSize(isHorizontal ? [60, 180] : [180, 60])
-      .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.5))
-
-    treeLayout(root)
-
-    // Calculate bounding box
-    let minX = Infinity, maxX = -Infinity
-    let minY = Infinity, maxY = -Infinity
-    
-    root.descendants().forEach(d => {
-      if (isHorizontal) {
-        minX = Math.min(minX, d.y)
-        maxX = Math.max(maxX, d.y)
-        minY = Math.min(minY, d.x)
-        maxY = Math.max(maxY, d.x)
-      } else {
-        minX = Math.min(minX, d.x)
-        maxX = Math.max(maxX, d.x)
-        minY = Math.min(minY, d.y)
-        maxY = Math.max(maxY, d.y)
-      }
-    })
-
-    const treeWidth = maxX - minX + margin.left + margin.right
-    const treeHeight = maxY - minY + margin.top + margin.bottom
-
-    // Calculate scale factor to fit tree within container
-    const scaleX = (containerWidth - margin.left - margin.right) / treeWidth
-    const scaleY = (containerHeight - margin.top - margin.bottom) / treeHeight
-    const scale = Math.min(scaleX, scaleY, 1) // Don't scale up, only scale down if needed
-
-    // Center transform with scaling
-    const centerX = isHorizontal ? margin.left : (containerWidth - (maxX - minX) * scale) / 2
-    const centerY = isHorizontal ? (containerHeight - (maxY - minY) * scale) / 2 : margin.top
-    
-    // Apply the transformation via the zoom behavior
-    svg.transition().duration(750).call(
-      d3.zoom<SVGSVGElement, unknown>().transform as any,
-      d3.zoomIdentity.translate(centerX, centerY).scale(scale)
-    )
-  }
-  
   // Export to image
   const exportToImage = (format: 'png' | 'svg') => {
     if (!svgRef.current) return
@@ -379,7 +292,7 @@ export default function PlanVisualizer({ plan }: Props) {
   }
 
   return (
-    <div style={{ width: '100%', minHeight: '800px', height: 'calc(100vh - 120px)', position: 'relative' }}>
+    <div style={{ width: '100%', height: '1200px', position: 'relative' }}>
       {/* Controls */}
       <div style={{ 
         position: 'absolute', 
@@ -486,22 +399,6 @@ export default function PlanVisualizer({ plan }: Props) {
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
         }}>
           <button
-            onClick={zoomToFit}
-            style={{
-              padding: '6px 12px',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: '500',
-              background: '#094cb2',
-              color: 'white',
-              transition: 'all 0.2s'
-            }}
-          >
-            🔍 Fit View
-          </button>
-          <button
             onClick={() => exportToImage('png')}
             style={{
               padding: '6px 12px',
@@ -536,7 +433,7 @@ export default function PlanVisualizer({ plan }: Props) {
         </div>
       </div>
       
-      <div ref={containerRef} className="overflow-auto" style={{ width: '100%', height: '100%' }}>
+      <div className="overflow-auto" style={{ width: '100%', height: '100%' }}>
         <svg ref={svgRef} className="border rounded"></svg>
       </div>
     </div>

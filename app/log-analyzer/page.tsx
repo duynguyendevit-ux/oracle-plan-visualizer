@@ -204,7 +204,7 @@ export default function LogAnalyzer() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-200px)]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[600px] lg:h-[calc(100vh-200px)]">
         {/* Input Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
@@ -240,7 +240,7 @@ export default function LogAnalyzer() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Paste Spring Boot logs here or upload a file..."
-              className="w-full h-96 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
+              className="w-full h-64 md:h-96 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
             
             <div className="mt-3 flex gap-2">
