@@ -29,10 +29,22 @@ export default function ExcelTools() {
     if (!file) return
     
     setAnalyzerFile(file)
-    const data = await file.arrayBuffer()
-    const workbook = XLSX.read(data)
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-    const jsonData = XLSX.utils.sheet_to_json(worksheet)
+    
+    let jsonData: any[]
+    
+    if (file.name.endsWith('.csv')) {
+      // Handle CSV
+      const text = await file.text()
+      const workbook = XLSX.read(text, { type: 'string' })
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      jsonData = XLSX.utils.sheet_to_json(worksheet)
+    } else {
+      // Handle Excel
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      jsonData = XLSX.utils.sheet_to_json(worksheet)
+    }
     
     setAnalyzerData(jsonData)
     analyzeData(jsonData)
@@ -112,17 +124,29 @@ export default function ExcelTools() {
   const handleDiffCompare = async () => {
     if (!diffFile1 || !diffFile2) return
     
-    const data1 = await diffFile1.arrayBuffer()
-    const data2 = await diffFile2.arrayBuffer()
+    let json1: any[], json2: any[]
     
-    const wb1 = XLSX.read(data1)
-    const wb2 = XLSX.read(data2)
+    // Read file 1
+    if (diffFile1.name.endsWith('.csv')) {
+      const text1 = await diffFile1.text()
+      const wb1 = XLSX.read(text1, { type: 'string' })
+      json1 = XLSX.utils.sheet_to_json(wb1.Sheets[wb1.SheetNames[0]])
+    } else {
+      const data1 = await diffFile1.arrayBuffer()
+      const wb1 = XLSX.read(data1)
+      json1 = XLSX.utils.sheet_to_json(wb1.Sheets[wb1.SheetNames[0]])
+    }
     
-    const ws1 = wb1.Sheets[wb1.SheetNames[0]]
-    const ws2 = wb2.Sheets[wb2.SheetNames[0]]
-    
-    const json1 = XLSX.utils.sheet_to_json(ws1)
-    const json2 = XLSX.utils.sheet_to_json(ws2)
+    // Read file 2
+    if (diffFile2.name.endsWith('.csv')) {
+      const text2 = await diffFile2.text()
+      const wb2 = XLSX.read(text2, { type: 'string' })
+      json2 = XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]])
+    } else {
+      const data2 = await diffFile2.arrayBuffer()
+      const wb2 = XLSX.read(data2)
+      json2 = XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]])
+    }
     
     const differences = {
       rowCountDiff: json1.length - json2.length,
@@ -194,11 +218,11 @@ export default function ExcelTools() {
           
           <div className="mb-6">
             <label className="block text-sm font-medium text-on-surface mb-2">
-              Upload Excel File
+              Upload Excel/CSV File
             </label>
             <input
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               onChange={handleAnalyzerUpload}
               className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
             />
@@ -298,7 +322,7 @@ export default function ExcelTools() {
               </label>
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={(e) => setDiffFile1(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
               />
@@ -310,7 +334,7 @@ export default function ExcelTools() {
               </label>
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={(e) => setDiffFile2(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
               />
