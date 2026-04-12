@@ -103,6 +103,14 @@ export default function SQLExtractor() {
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Keyboard shortcut handler
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault()
+      handleExtractSQL()
+    }
+  }, [handleExtractSQL])
+
   const handleExtractSQL = useCallback(() => {
     if (!input.trim()) return
     
@@ -296,6 +304,7 @@ export default function SQLExtractor() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Paste logs, code, or text containing SQL statements... (or upload a file)"
               className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
               disabled={isProcessing}
@@ -311,7 +320,7 @@ export default function SQLExtractor() {
               disabled={isProcessing || !input.trim()}
               className="mt-3 w-full bg-primary text-white py-2.5 rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isProcessing ? 'Processing...' : 'Extract SQL'}
+              {isProcessing ? 'Processing...' : 'Extract SQL (Ctrl+Enter)'}
             </button>
           </div>
         </div>
