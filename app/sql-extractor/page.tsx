@@ -242,6 +242,10 @@ export default function SQLExtractor() {
               placeholder="Paste logs, code, or text containing SQL statements... (or upload a file)"
               className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
               disabled={isProcessing}
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
             />
             
             <button
@@ -290,6 +294,10 @@ export default function SQLExtractor() {
               readOnly
               placeholder="Extracted SQL will appear here..."
               className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
             />
           </div>
         </div>
