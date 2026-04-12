@@ -98,10 +98,12 @@ export default function PlanVisualizer({ plan }: Props) {
     let minY = Infinity, maxY = -Infinity
     
     root.descendants().forEach(d => {
-      minX = Math.min(minX, d.x)
-      maxX = Math.max(maxX, d.x)
-      minY = Math.min(minY, d.y)
-      maxY = Math.max(maxY, d.y)
+      if (d.x !== undefined && d.y !== undefined) {
+        minX = Math.min(minX, d.x)
+        maxX = Math.max(maxX, d.x)
+        minY = Math.min(minY, d.y)
+        maxY = Math.max(maxY, d.y)
+      }
     })
 
     const treeWidth = maxX - minX + margin.left + margin.right
@@ -298,10 +300,12 @@ export default function PlanVisualizer({ plan }: Props) {
     let minY = Infinity, maxY = -Infinity
     
     root.descendants().forEach(d => {
-      minX = Math.min(minX, d.x)
-      maxX = Math.max(maxX, d.x)
-      minY = Math.min(minY, d.y)
-      maxY = Math.max(maxY, d.y)
+      if (d.x !== undefined && d.y !== undefined) {
+        minX = Math.min(minX, d.x)
+        maxX = Math.max(maxX, d.x)
+        minY = Math.min(minY, d.y)
+        maxY = Math.max(maxY, d.y)
+      }
     })
 
     const treeWidth = maxX - minX + margin.left + margin.right
