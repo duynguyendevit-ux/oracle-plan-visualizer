@@ -194,17 +194,17 @@ export default function LogAnalyzer() {
       const date = new Date(timestamp)
       if (isNaN(date.getTime())) return timestamp
       
-      // Add 7 hours
-      date.setHours(date.getHours() + 7)
+      // Get UTC time in milliseconds and add 7 hours (7 * 60 * 60 * 1000)
+      const utc7Time = new Date(date.getTime() + (7 * 60 * 60 * 1000))
       
       // Format: YYYY-MM-DD HH:mm:ss.SSS (UTC+7)
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      const hours = String(date.getHours()).padStart(2, '0')
-      const minutes = String(date.getMinutes()).padStart(2, '0')
-      const seconds = String(date.getSeconds()).padStart(2, '0')
-      const ms = String(date.getMilliseconds()).padStart(3, '0')
+      const year = utc7Time.getUTCFullYear()
+      const month = String(utc7Time.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(utc7Time.getUTCDate()).padStart(2, '0')
+      const hours = String(utc7Time.getUTCHours()).padStart(2, '0')
+      const minutes = String(utc7Time.getUTCMinutes()).padStart(2, '0')
+      const seconds = String(utc7Time.getUTCSeconds()).padStart(2, '0')
+      const ms = String(utc7Time.getUTCMilliseconds()).padStart(3, '0')
       
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms} (UTC+7)`
     } catch (e) {
