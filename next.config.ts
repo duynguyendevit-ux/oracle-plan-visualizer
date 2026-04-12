@@ -1,8 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Disable Turbopack to use Webpack (better Tailwind support)
-  // turbopack: false, // Not needed, just don't use --turbo flag
+  // Enable Web Workers
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.output.globalObject = 'self';
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

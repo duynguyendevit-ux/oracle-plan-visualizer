@@ -1,138 +1,199 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useDebounce } from '@/hooks/useDebounce'
+import Editor from '@monaco-editor/react'
 
 export default function SQLExtractor() {
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
+  const workerRef = useRef<Worker | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const extractSQL = () => {
-    // Extract SQL from various formats (logs, code, etc.)
-    const lines = input.split('\n')
-    const sqlLines: string[] = []
-    const bindings: Array<{ index: number, value: string }> = []
-    let inSQL = false
+  // Initialize Web Worker
+  useEffect(() => {
+    workerRef.current = new Worker(new URL('./sql-worker.ts', import.meta.url))
     
-    lines.forEach(line => {
-      // Extract binding parameters
-      const bindMatch = line.match(/binding parameter \[(\d+)\] as \[.*?\] - \[(.+?)\]/)
-      if (bindMatch) {
-        bindings.push({ index: parseInt(bindMatch[1]), value: bindMatch[2] })
-        return
-      }
+    workerRef.current.onmessage = (e) => {
+      const { type, sql, stats } = e.data
       
-      // Remove common prefixes (timestamps, log levels, etc.)
-      let cleaned = line
-        .replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.,]\d+Z?\s+/, '') // ISO timestamp
-        .replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d+\s+/, '') // timestamp
-        .replace(/^\[.*?\]\s*/, '') // [INFO], [DEBUG], etc.
-        .replace(/^(INFO|DEBUG|WARN|ERROR|TRACE)\s*:\s*/i, '') // log level
-        .replace(/^.*?:\s*Executing\s+SQL:\s*/i, '') // "Executing SQL:"
-        .replace(/^.*?---\s+\[.*?\]\s+/, '') // Spring Boot format
-        .replace(/^Hibernate:\s*/i, '') // Hibernate prefix
-        .trim()
-      
-      // Detect SQL keywords
-      if (/^(select|insert|update|delete|create|alter|drop|with)\b/i.test(cleaned)) {
-        inSQL = true
+      if (type === 'result') {
+        setOutput(sql)
+        setStats(stats)
+        setIsProcessing(false)
       }
-      
-      if (inSQL && cleaned) {
-        sqlLines.push(cleaned)
-        
-        // End of SQL statement
-        if (cleaned.endsWith(';') || /rows only$/i.test(cleaned)) {
-          inSQL = false
-        }
-      }
-    })
-    
-    let sql = sqlLines.join('\n')
-    
-    // Replace ? with binding values
-    if (bindings.length > 0) {
-      bindings.sort((a, b) => a.index - b.index)
-      bindings.forEach(binding => {
-        const value = binding.value
-        let formattedValue: string
-        
-        // Check if it's a timestamp/date
-        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
-          // Convert ISO timestamp to Oracle TIMESTAMP format
-          const cleanDate = value.replace('T', ' ').replace(/\[.*?\]$/, '')
-          formattedValue = `TIMESTAMP '${cleanDate}'`
-        }
-        // Check if it's a number
-        else if (/^\d+$/.test(value)) {
-          formattedValue = value
-        }
-        // String value
-        else {
-          formattedValue = `'${value}'`
-        }
-        
-        sql = sql.replace('?', formattedValue)
-      })
     }
-    
-    setOutput(sql)
-  }
 
-  const formatSQL = () => {
-    // Basic SQL formatting
-    let formatted = output
-      .replace(/\s+/g, ' ') // normalize whitespace
-      .replace(/\s*,\s*/g, ',\n  ') // commas on new lines
-      .replace(/\bFROM\b/gi, '\nFROM')
-      .replace(/\bWHERE\b/gi, '\nWHERE')
-      .replace(/\bAND\b/gi, '\n  AND')
-      .replace(/\bOR\b/gi, '\n  OR')
-      .replace(/\bJOIN\b/gi, '\nJOIN')
-      .replace(/\bLEFT JOIN\b/gi, '\nLEFT JOIN')
-      .replace(/\bRIGHT JOIN\b/gi, '\nRIGHT JOIN')
-      .replace(/\bINNER JOIN\b/gi, '\nINNER JOIN')
-      .replace(/\bON\b/gi, '\n  ON')
-      .replace(/\bGROUP BY\b/gi, '\nGROUP BY')
-      .replace(/\bORDER BY\b/gi, '\nORDER BY')
-      .replace(/\bHAVING\b/gi, '\nHAVING')
-      .replace(/\bLIMIT\b/gi, '\nLIMIT')
-      .trim()
-    
-    setOutput(formatted)
-  }
+    return () => {
+      workerRef.current?.terminate()
+    }
+  }, [])
 
-  const copyToClipboard = () => {
+  // Debounced extraction for auto-process
+  const debouncedInput = useDebounce(input, 500)
+
+  useEffect(() => {
+    if (debouncedInput && debouncedInput.length > 100) {
+      extractSQL()
+    }
+  }, [debouncedInput])
+
+  const extractSQL = useCallback(() => {
+    if (!input.trim()) return
+    
+    setIsProcessing(true)
+    const startTime = performance.now()
+    
+    workerRef.current?.postMessage({
+      type: 'extract',
+      input,
+      startTime
+    })
+  }, [input])
+
+  const formatSQL = useCallback(() => {
+    if (!output.trim()) return
+    
+    setIsProcessing(true)
+    
+    workerRef.current?.postMessage({
+      type: 'format',
+      sql: output
+    })
+  }, [output])
+
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Check file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      alert('File too large! Maximum size is 50MB')
+      return
+    }
+
+    setIsProcessing(true)
+    const reader = new FileReader()
+
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      setInput(text)
+      setIsProcessing(false)
+    }
+
+    reader.onerror = () => {
+      alert('Error reading file')
+      setIsProcessing(false)
+    }
+
+    // Use streaming for large files
+    if (file.size > 5 * 1024 * 1024) {
+      const stream = file.stream()
+      const reader = stream.getReader()
+      const decoder = new TextDecoder()
+      let chunks = ''
+
+      const processChunk = async () => {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          setInput(chunks)
+          setIsProcessing(false)
+          return
+        }
+
+        chunks += decoder.decode(value, { stream: true })
+        processChunk()
+      }
+
+      processChunk()
+    } else {
+      reader.readAsText(file)
+    }
+  }, [])
+
+  const copyToClipboard = useCallback(() => {
     navigator.clipboard.writeText(output)
-  }
+  }, [output])
+
+  const downloadSQL = useCallback(() => {
+    const blob = new Blob([output], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `extracted-sql-${Date.now()}.sql`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [output])
 
   return (
     <div className="p-4 max-w-full mx-auto">
+      {/* Stats Bar */}
+      {stats.lines > 0 && (
+        <div className="mb-4 p-3 bg-surface-container rounded-lg flex gap-6 text-sm text-on-surface-variant">
+          <span>Lines: <strong className="text-on-surface">{stats.lines.toLocaleString()}</strong></span>
+          <span>Size: <strong className="text-on-surface">{(stats.size / 1024).toFixed(2)} KB</strong></span>
+          <span>Time: <strong className="text-on-surface">{stats.time.toFixed(2)} ms</strong></span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Input Panel */}
         <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
           <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
-            <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Input (Logs/Code)</h3>
-            <button
-              onClick={() => setInput('')}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 font-medium transition-colors"
-            >
-              Clear
-            </button>
+            <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">
+              Input (Logs/Code)
+            </h3>
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.log,.sql"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessing}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-medium transition-colors disabled:opacity-50"
+              >
+                Upload File
+              </button>
+              <button
+                onClick={() => setInput('')}
+                className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 font-medium transition-colors"
+              >
+                Clear
+              </button>
+            </div>
           </div>
           
           <div className="p-4">
-            <textarea
+            <Editor
+              height="384px"
+              defaultLanguage="plaintext"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Paste logs, code, or text containing SQL statements..."
-              className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
+              onChange={(value) => setInput(value || '')}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'off',
+                readOnly: isProcessing,
+                automaticLayout: true,
+              }}
             />
             
             <button
               onClick={extractSQL}
-              className="mt-3 w-full bg-primary text-white py-2.5 rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-warm"
+              disabled={isProcessing || !input.trim()}
+              className="mt-3 w-full bg-primary text-white py-2.5 rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Extract SQL
+              {isProcessing ? 'Processing...' : 'Extract SQL'}
             </button>
           </div>
         </div>
@@ -140,29 +201,49 @@ export default function SQLExtractor() {
         {/* Output Panel */}
         <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
           <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
-            <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Extracted SQL</h3>
+            <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">
+              Extracted SQL
+            </h3>
             <div className="flex gap-2">
               <button
                 onClick={formatSQL}
-                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-medium transition-colors"
+                disabled={isProcessing || !output.trim()}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-medium transition-colors disabled:opacity-50"
               >
                 Format
               </button>
               <button
                 onClick={copyToClipboard}
-                className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors"
+                disabled={!output.trim()}
+                className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors disabled:opacity-50"
               >
                 Copy
+              </button>
+              <button
+                onClick={downloadSQL}
+                disabled={!output.trim()}
+                className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 font-medium transition-colors disabled:opacity-50"
+              >
+                Download
               </button>
             </div>
           </div>
           
           <div className="p-4">
-            <textarea
+            <Editor
+              height="384px"
+              defaultLanguage="sql"
               value={output}
-              onChange={(e) => setOutput(e.target.value)}
-              placeholder="Extracted SQL will appear here..."
-              className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'off',
+                readOnly: true,
+                automaticLayout: true,
+              }}
             />
           </div>
         </div>
