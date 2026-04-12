@@ -42,6 +42,7 @@ export default function RootLayout({
                   </div>
                   <div>
                     <h1 className={`text-lg font-serif font-semibold ${darkMode ? 'text-white' : 'text-warm-800'}`}>MyDevTools</h1>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-warm-600'} italic`}>Làm ko bug đời ko nể</p>
                   </div>
                 </>
               )}
