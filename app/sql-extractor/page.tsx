@@ -109,18 +109,34 @@ export default function SQLExtractor() {
     setIsProcessing(true)
     const startTime = performance.now()
     
-    setTimeout(() => {
-      const result = extractSQL(input)
-      const endTime = performance.now()
-      
-      setOutput(result.sql)
-      setStats({
-        lines: result.lines,
-        size: result.sql.length,
-        time: endTime - startTime
+    // Use requestIdleCallback for better performance
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        const result = extractSQL(input)
+        const endTime = performance.now()
+        
+        setOutput(result.sql)
+        setStats({
+          lines: result.lines,
+          size: result.sql.length,
+          time: endTime - startTime
+        })
+        setIsProcessing(false)
       })
-      setIsProcessing(false)
-    }, 10)
+    } else {
+      setTimeout(() => {
+        const result = extractSQL(input)
+        const endTime = performance.now()
+        
+        setOutput(result.sql)
+        setStats({
+          lines: result.lines,
+          size: result.sql.length,
+          time: endTime - startTime
+        })
+        setIsProcessing(false)
+      }, 10)
+    }
   }, [input])
 
   const handleFormatSQL = useCallback(() => {
@@ -128,17 +144,31 @@ export default function SQLExtractor() {
     
     setIsProcessing(true)
     
-    setTimeout(() => {
-      const formatted = formatSQL(output)
-      
-      setOutput(formatted)
-      setStats(prev => ({
-        ...prev,
-        lines: formatted.split('\n').length,
-        size: formatted.length
-      }))
-      setIsProcessing(false)
-    }, 10)
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        const formatted = formatSQL(output)
+        
+        setOutput(formatted)
+        setStats(prev => ({
+          ...prev,
+          lines: formatted.split('\n').length,
+          size: formatted.length
+        }))
+        setIsProcessing(false)
+      })
+    } else {
+      setTimeout(() => {
+        const formatted = formatSQL(output)
+        
+        setOutput(formatted)
+        setStats(prev => ({
+          ...prev,
+          lines: formatted.split('\n').length,
+          size: formatted.length
+        }))
+        setIsProcessing(false)
+      }, 10)
+    }
   }, [output])
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,13 +181,22 @@ export default function SQLExtractor() {
     }
 
     setIsProcessing(true)
-    setStats({ lines: 0, size: 0, time: 0 }) // Reset stats
+    setStats({ lines: 0, size: 0, time: 0 })
+    
     const reader = new FileReader()
+
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100
+        setStats(prev => ({ ...prev, time: percentComplete }))
+      }
+    }
 
     reader.onload = (event) => {
       const text = event.target?.result as string
       setInput(text)
       setIsProcessing(false)
+      setStats({ lines: 0, size: 0, time: 0 })
     }
 
     reader.onerror = () => {
@@ -182,6 +221,15 @@ export default function SQLExtractor() {
     URL.revokeObjectURL(url)
   }, [output])
 
+  // Show file size warning
+  const fileSizeWarning = useMemo(() => {
+    const sizeInMB = input.length / (1024 * 1024)
+    if (sizeInMB > 10) {
+      return `⚠️ Large file (${sizeInMB.toFixed(1)}MB) - scrolling may be slow`
+    }
+    return null
+  }, [input.length])
+
   return (
     <div className="p-4 max-w-full mx-auto">
       {/* Stats Bar with Loading */}
@@ -193,7 +241,9 @@ export default function SQLExtractor() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <strong className="text-on-surface">Loading...</strong>
+              <strong className="text-on-surface">
+                {stats.time > 0 && stats.time < 100 ? `Loading... ${stats.time.toFixed(0)}%` : 'Processing...'}
+              </strong>
             </span>
           ) : (
             <>
@@ -202,6 +252,13 @@ export default function SQLExtractor() {
               <span>Time: <strong className="text-on-surface">{stats.time.toFixed(2)} ms</strong></span>
             </>
           )}
+        </div>
+      )}
+
+      {/* File Size Warning */}
+      {fileSizeWarning && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+          {fileSizeWarning}
         </div>
       )}
 
@@ -246,6 +303,7 @@ export default function SQLExtractor() {
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
+              style={{ willChange: 'scroll-position' }}
             />
             
             <button
@@ -298,6 +356,7 @@ export default function SQLExtractor() {
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
+              style={{ willChange: 'scroll-position' }}
             />
           </div>
         </div>
