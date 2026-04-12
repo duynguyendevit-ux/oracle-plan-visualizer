@@ -103,3 +103,72 @@ h1, h2, h3, h4, h5, h6 {
 .dark .surface-lift:hover {
   background-color: #2b2a29;
 }
+
+/* Dark mode utility classes for components */
+.dark .bg-surface-container-low {
+  background-color: #1c1b1a;
+}
+
+.dark .bg-surface-container {
+  background-color: #201f1e;
+}
+
+.dark .bg-surface-container-lowest {
+  background-color: #0f0e0d;
+}
+
+.dark .text-on-surface {
+  color: #e6e2df;
+}
+
+.dark .text-on-surface-variant {
+  color: rgba(230, 226, 223, 0.6);
+}
+
+.dark .border-outline-variant {
+  border-color: rgba(80, 69, 56, 0.2);
+}
+
+.dark .bg-primary {
+  background-color: #f6bc69;
+}
+
+.dark .text-primary {
+  color: #f6bc69;
+}
+
+.dark .hover\:bg-primary\/90:hover {
+  background-color: rgba(246, 188, 105, 0.9);
+}
+
+.dark .bg-warm-50 {
+  background-color: #1c1b1a;
+}
+
+.dark .bg-warm-100 {
+  background-color: #201f1e;
+}
+
+.dark .text-warm-600 {
+  color: #e6e2df;
+}
+
+.dark .text-warm-700 {
+  color: #e6e2df;
+}
+
+.dark .text-warm-800 {
+  color: #e6e2df;
+}
+
+.dark .border-warm-300 {
+  border-color: rgba(80, 69, 56, 0.2);
+}
+
+.dark .shadow-warm {
+  box-shadow: 0 20px 40px rgba(230, 226, 223, 0.05);
+}
+
+.dark .shadow-editorial {
+  box-shadow: 0 20px 40px rgba(230, 226, 223, 0.05);
+}
