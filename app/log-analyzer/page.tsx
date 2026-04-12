@@ -20,14 +20,14 @@ export default function LogAnalyzer() {
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
+  const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File too large! Maximum size is 20MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+      setError(`File too large! Maximum size is 50MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
       e.target.value = ''
       return
     }
@@ -259,7 +259,7 @@ export default function LogAnalyzer() {
             
             <div className="mb-3">
               <label className="block text-sm font-medium text-warm-700 mb-2">
-                Upload Log File (Max 20MB)
+                Upload Log File (Max 50MB)
               </label>
               <input
                 type="file"
