@@ -11,9 +11,34 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebarCollapsed')
+      return saved ? JSON.parse(saved) : false
+    }
+    return false
+  })
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('darkMode')
+      return saved ? JSON.parse(saved) : false
+    }
+    return false
+  })
   const pathname = usePathname()
+
+  // Save preferences to localStorage
+  const toggleDarkMode = () => {
+    const newValue = !darkMode
+    setDarkMode(newValue)
+    localStorage.setItem('darkMode', JSON.stringify(newValue))
+  }
+
+  const toggleSidebarCollapsed = () => {
+    const newValue = !sidebarCollapsed
+    setSidebarCollapsed(newValue)
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(newValue))
+  }
 
   const navigation = [
     { name: '🔍 Execution Plan Visual', href: '/' },
@@ -79,7 +104,7 @@ export default function RootLayout({
             {/* Toggle Button */}
             <div className="absolute bottom-20 left-0 right-0 px-4">
               <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onClick={toggleSidebarCollapsed}
                 className={`w-full px-4 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                   darkMode ? 'text-dark-on-surface hover:bg-dark-surface-container' : 'text-on-surface hover:bg-surface-container'
                 }`}
@@ -131,7 +156,7 @@ export default function RootLayout({
               
               {/* Dark Mode Toggle */}
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={toggleDarkMode}
                 className={`p-2 rounded-lg transition-colors ${
                   darkMode ? 'text-dark-primary hover:bg-dark-surface-container' : 'text-primary hover:bg-surface-container'
                 }`}
