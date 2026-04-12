@@ -1,74 +1,156 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { useDebounce } from '@/hooks/useDebounce'
+import { useState, useCallback, useRef } from 'react'
 import Editor from '@monaco-editor/react'
+
+// Inline SQL extraction logic (no Web Worker)
+function extractSQL(input: string): { sql: string; lines: number } {
+  const lines = input.split('\n')
+  const sqlLines: string[] = []
+  const bindings: Array<{ index: number; value: string }> = []
+  let inSQL = false
+  let lineCount = 0
+
+  lines.forEach(line => {
+    // Extract binding parameters
+    const bindMatch = line.match(/binding parameter \[(\d+)\] as \[.*?\] - \[(.+?)\]/)
+    if (bindMatch) {
+      bindings.push({ index: parseInt(bindMatch[1]), value: bindMatch[2] })
+      return
+    }
+
+    // Remove common prefixes
+    let cleaned = line
+      .replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.,]\d+Z?\s+/, '')
+      .replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d+\s+/, '')
+      .replace(/^\[.*?\]\s*/, '')
+      .replace(/^(INFO|DEBUG|WARN|ERROR|TRACE)\s*:\s*/i, '')
+      .replace(/^.*?:\s*Executing\s+SQL:\s*/i, '')
+      .replace(/^.*?---\s+\[.*?\]\s+/, '')
+      .replace(/^Hibernate:\s*/i, '')
+      .replace(/^.*?SQL:\s*/i, '')
+      .trim()
+
+    // Detect SQL keywords
+    if (/^(select|insert|update|delete|create|alter|drop|with|merge)\b/i.test(cleaned)) {
+      inSQL = true
+    }
+
+    if (inSQL && cleaned) {
+      sqlLines.push(cleaned)
+      lineCount++
+
+      if (cleaned.endsWith(';') || /rows only$/i.test(cleaned) || /fetch first/i.test(cleaned)) {
+        inSQL = false
+      }
+    }
+  })
+
+  let sql = sqlLines.join('\n')
+
+  // Replace ? with binding values
+  if (bindings.length > 0) {
+    bindings.sort((a, b) => a.index - b.index)
+    bindings.forEach(binding => {
+      const value = binding.value
+      let formattedValue: string
+
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+        const cleanDate = value.replace('T', ' ').replace(/\[.*?\]$/, '')
+        formattedValue = `TIMESTAMP '${cleanDate}'`
+      } else if (/^-?\d+(\.\d+)?$/.test(value)) {
+        formattedValue = value
+      } else {
+        formattedValue = `'${value.replace(/'/g, "''")}'`
+      }
+
+      sql = sql.replace('?', formattedValue)
+    })
+  }
+
+  return { sql, lines: lineCount }
+}
+
+function formatSQL(sql: string): string {
+  let formatted = sql.replace(/\s+/g, ' ').trim()
+
+  const keywords = [
+    'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY',
+    'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
+    'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
+    'INSERT INTO', 'UPDATE', 'DELETE FROM', 'CREATE', 'ALTER', 'DROP', 'WITH'
+  ]
+
+  keywords.forEach(keyword => {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'gi')
+    formatted = formatted.replace(regex, `\n${keyword}`)
+  })
+
+  formatted = formatted.replace(/SELECT\s+/gi, 'SELECT\n  ')
+  formatted = formatted.replace(/,\s*(?![^()]*\))/g, ',\n  ')
+  formatted = formatted.replace(/\bAND\b/gi, '\n  AND')
+  formatted = formatted.replace(/\bOR\b/gi, '\n  OR')
+  formatted = formatted.replace(/\bON\b/gi, '\n    ON')
+
+  formatted = formatted
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join('\n')
+
+  return formatted
+}
 
 export default function SQLExtractor() {
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
-  const workerRef = useRef<Worker | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize Web Worker
-  useEffect(() => {
-    workerRef.current = new Worker(new URL('./sql-worker.ts', import.meta.url))
-    
-    workerRef.current.onmessage = (e) => {
-      const { type, sql, stats } = e.data
-      
-      if (type === 'result') {
-        setOutput(sql)
-        setStats(stats)
-        setIsProcessing(false)
-      }
-    }
-
-    return () => {
-      workerRef.current?.terminate()
-    }
-  }, [])
-
-  // Debounced extraction for auto-process
-  const debouncedInput = useDebounce(input, 500)
-
-  useEffect(() => {
-    if (debouncedInput && debouncedInput.length > 100) {
-      extractSQL()
-    }
-  }, [debouncedInput])
-
-  const extractSQL = useCallback(() => {
+  const handleExtractSQL = useCallback(() => {
     if (!input.trim()) return
     
     setIsProcessing(true)
     const startTime = performance.now()
     
-    workerRef.current?.postMessage({
-      type: 'extract',
-      input,
-      startTime
-    })
+    // Use setTimeout to avoid blocking UI
+    setTimeout(() => {
+      const result = extractSQL(input)
+      const endTime = performance.now()
+      
+      setOutput(result.sql)
+      setStats({
+        lines: result.lines,
+        size: result.sql.length,
+        time: endTime - startTime
+      })
+      setIsProcessing(false)
+    }, 10)
   }, [input])
 
-  const formatSQL = useCallback(() => {
+  const handleFormatSQL = useCallback(() => {
     if (!output.trim()) return
     
     setIsProcessing(true)
     
-    workerRef.current?.postMessage({
-      type: 'format',
-      sql: output
-    })
+    setTimeout(() => {
+      const formatted = formatSQL(output)
+      
+      setOutput(formatted)
+      setStats(prev => ({
+        ...prev,
+        lines: formatted.split('\n').length,
+        size: formatted.length
+      }))
+      setIsProcessing(false)
+    }, 10)
   }, [output])
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Check file size (max 50MB)
     if (file.size > 50 * 1024 * 1024) {
       alert('File too large! Maximum size is 50MB')
       return
@@ -88,30 +170,7 @@ export default function SQLExtractor() {
       setIsProcessing(false)
     }
 
-    // Use streaming for large files
-    if (file.size > 5 * 1024 * 1024) {
-      const stream = file.stream()
-      const reader = stream.getReader()
-      const decoder = new TextDecoder()
-      let chunks = ''
-
-      const processChunk = async () => {
-        const { done, value } = await reader.read()
-        
-        if (done) {
-          setInput(chunks)
-          setIsProcessing(false)
-          return
-        }
-
-        chunks += decoder.decode(value, { stream: true })
-        processChunk()
-      }
-
-      processChunk()
-    } else {
-      reader.readAsText(file)
-    }
+    reader.readAsText(file)
   }, [])
 
   const copyToClipboard = useCallback(() => {
@@ -130,7 +189,6 @@ export default function SQLExtractor() {
 
   return (
     <div className="p-4 max-w-full mx-auto">
-      {/* Stats Bar */}
       {stats.lines > 0 && (
         <div className="mb-4 p-3 bg-surface-container rounded-lg flex gap-6 text-sm text-on-surface-variant">
           <span>Lines: <strong className="text-on-surface">{stats.lines.toLocaleString()}</strong></span>
@@ -140,7 +198,6 @@ export default function SQLExtractor() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Input Panel */}
         <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
           <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
             <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">
@@ -189,7 +246,7 @@ export default function SQLExtractor() {
             />
             
             <button
-              onClick={extractSQL}
+              onClick={handleExtractSQL}
               disabled={isProcessing || !input.trim()}
               className="mt-3 w-full bg-primary text-white py-2.5 rounded-lg hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -198,7 +255,6 @@ export default function SQLExtractor() {
           </div>
         </div>
 
-        {/* Output Panel */}
         <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
           <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
             <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">
@@ -206,7 +262,7 @@ export default function SQLExtractor() {
             </h3>
             <div className="flex gap-2">
               <button
-                onClick={formatSQL}
+                onClick={handleFormatSQL}
                 disabled={isProcessing || !output.trim()}
                 className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-medium transition-colors disabled:opacity-50"
               >
