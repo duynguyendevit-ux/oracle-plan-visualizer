@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
     "@types/d3": "^7.4.3",
     "autoprefixer": "^10.4.27",
     "d3": "^7.9.0",

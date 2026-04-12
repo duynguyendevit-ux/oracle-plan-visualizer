@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import Editor from '@monaco-editor/react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 
-// Inline SQL extraction logic (no Web Worker)
+// Inline SQL extraction logic
 function extractSQL(input: string): { sql: string; lines: number } {
   const lines = input.split('\n')
   const sqlLines: string[] = []
@@ -12,14 +11,12 @@ function extractSQL(input: string): { sql: string; lines: number } {
   let lineCount = 0
 
   lines.forEach(line => {
-    // Extract binding parameters
     const bindMatch = line.match(/binding parameter \[(\d+)\] as \[.*?\] - \[(.+?)\]/)
     if (bindMatch) {
       bindings.push({ index: parseInt(bindMatch[1]), value: bindMatch[2] })
       return
     }
 
-    // Remove common prefixes
     let cleaned = line
       .replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.,]\d+Z?\s+/, '')
       .replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d+\s+/, '')
@@ -31,7 +28,6 @@ function extractSQL(input: string): { sql: string; lines: number } {
       .replace(/^.*?SQL:\s*/i, '')
       .trim()
 
-    // Detect SQL keywords
     if (/^(select|insert|update|delete|create|alter|drop|with|merge)\b/i.test(cleaned)) {
       inSQL = true
     }
@@ -48,7 +44,6 @@ function extractSQL(input: string): { sql: string; lines: number } {
 
   let sql = sqlLines.join('\n')
 
-  // Replace ? with binding values
   if (bindings.length > 0) {
     bindings.sort((a, b) => a.index - b.index)
     bindings.forEach(binding => {
@@ -114,7 +109,6 @@ export default function SQLExtractor() {
     setIsProcessing(true)
     const startTime = performance.now()
     
-    // Use setTimeout to avoid blocking UI
     setTimeout(() => {
       const result = extractSQL(input)
       const endTime = performance.now()
@@ -228,21 +222,12 @@ export default function SQLExtractor() {
           </div>
           
           <div className="p-4">
-            <Editor
-              height="384px"
-              defaultLanguage="plaintext"
+            <textarea
               value={input}
-              onChange={(value) => setInput(value || '')}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                wordWrap: 'off',
-                readOnly: isProcessing,
-                automaticLayout: true,
-              }}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Paste logs, code, or text containing SQL statements... (or upload a file)"
+              className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
+              disabled={isProcessing}
             />
             
             <button
@@ -286,20 +271,11 @@ export default function SQLExtractor() {
           </div>
           
           <div className="p-4">
-            <Editor
-              height="384px"
-              defaultLanguage="sql"
+            <textarea
               value={output}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                wordWrap: 'off',
-                readOnly: true,
-                automaticLayout: true,
-              }}
+              readOnly
+              placeholder="Extracted SQL will appear here..."
+              className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
             />
           </div>
         </div>
