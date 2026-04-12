@@ -103,14 +103,6 @@ export default function SQLExtractor() {
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Keyboard shortcut handler
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault()
-      handleExtractSQL()
-    }
-  }, [handleExtractSQL])
-
   const handleExtractSQL = useCallback(() => {
     if (!input.trim()) return
     
@@ -146,6 +138,14 @@ export default function SQLExtractor() {
       }, 10)
     }
   }, [input])
+
+  // Keyboard shortcut handler
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault()
+      handleExtractSQL()
+    }
+  }, [handleExtractSQL])
 
   const handleFormatSQL = useCallback(() => {
     if (!output.trim()) return
