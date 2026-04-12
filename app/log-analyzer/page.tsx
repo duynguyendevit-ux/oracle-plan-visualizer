@@ -19,6 +19,7 @@ export default function LogAnalyzer() {
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [utcPlus7, setUtcPlus7] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 
@@ -179,11 +180,36 @@ export default function LogAnalyzer() {
   }
 
   const copyEntry = (entry: LogEntry) => {
-    let text = `[${entry.level}] ${entry.timestamp}\nLine ${entry.line}: ${entry.message}`
+    const displayTimestamp = utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp
+    let text = `[${entry.level}] ${displayTimestamp}\nLine ${entry.line}: ${entry.message}`
     if (entry.stackTrace && entry.stackTrace.length > 0) {
       text += '\n' + entry.stackTrace.join('\n')
     }
     navigator.clipboard.writeText(text)
+  }
+
+  const convertToUTC7 = (timestamp: string): string => {
+    if (!timestamp) return timestamp
+    try {
+      const date = new Date(timestamp)
+      if (isNaN(date.getTime())) return timestamp
+      
+      // Add 7 hours
+      date.setHours(date.getHours() + 7)
+      
+      // Format: YYYY-MM-DD HH:mm:ss.SSS (UTC+7)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      const ms = String(date.getMilliseconds()).padStart(3, '0')
+      
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms} (UTC+7)`
+    } catch (e) {
+      return timestamp
+    }
   }
 
   return (
@@ -322,17 +348,30 @@ export default function LogAnalyzer() {
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
             <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Results</h3>
-            {results.length > 0 && (
-              <button
-                onClick={exportResults}
-                className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Export
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {results.length > 0 && (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-warm-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={utcPlus7}
+                      onChange={(e) => setUtcPlus7(e.target.checked)}
+                      className="rounded border-warm-300 text-primary focus:ring-primary"
+                    />
+                    <span className="font-medium">UTC+7</span>
+                  </label>
+                  <button
+                    onClick={exportResults}
+                    className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           
           <div className="p-4 overflow-auto h-full">
@@ -363,7 +402,7 @@ export default function LogAnalyzer() {
                       }`}>
                         {entry.level}
                       </span>
-                      <span className="text-xs text-warm-600 font-mono font-bold">{entry.timestamp}</span>
+                      <span className="text-xs text-warm-600 font-mono font-bold">{utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp}</span>
                       <span className="text-xs text-warm-500 ml-auto">Line {entry.line}</span>
                     </div>
                     <div className="text-sm font-mono text-warm-800 mb-2">{entry.message}</div>
