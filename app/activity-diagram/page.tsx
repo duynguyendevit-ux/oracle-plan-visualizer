@@ -104,7 +104,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'activity-diagram.drawio'
+    a.download = 'activity-diagram.xml'
     a.click()
     URL.revokeObjectURL(url)
   }
