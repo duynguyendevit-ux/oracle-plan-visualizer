@@ -87,9 +87,7 @@ export function parseActivityDiagram(input: string): DiagramData {
 
     // Else branch
     if (line === 'else') {
-      // Pop back to decision node
-      const decisionNode = currentNode
-      currentNode = decisionNode
+      // Stay at decision node for else branch
       continue
     }
 
