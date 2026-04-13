@@ -5,21 +5,25 @@ import { motion } from 'framer-motion'
 import { parseActivityDiagram, generateSVG } from './diagram-generator'
 
 export default function ActivityDiagram() {
-  const [input, setInput] = useState(`start
--> Check user authentication
-if (User logged in?) then
-  -> [Yes] Load user profile
-  -> Display dashboard
+  const [input, setInput] = useState(`lane Thread 1
+start
+-> idle
+-> user action
+-> post command
+
+lane Thread 2
+start
+-> idle
+-> check for new commands
+-> command queue
+if (queue empty?) then
+  -> [yes] idle
 else
-  -> [No] Show login form
-  -> Validate credentials
-  if (Valid?) then
-    -> [Yes] Create session
-    -> Load user profile
-  else
-    -> [No] Show error message
-  endif
+  -> [no] dispatch command
 endif
+
+lane Thread 3
+-> process command
 -> end`)
 
   const [svg, setSvg] = useState('')
@@ -132,11 +136,13 @@ endif
                 Syntax Guide:
               </h3>
               <ul className="text-xs text-[#6b5d4f] dark:text-[#a89985] space-y-1 font-mono">
+                <li>• <code>lane Name</code> - Define swimlane</li>
                 <li>• <code>start</code> - Start node</li>
                 <li>• <code>end</code> - End node</li>
                 <li>• <code>-&gt; Action</code> - Activity</li>
                 <li>• <code>if (condition?) then ... else ... endif</code> - Decision</li>
                 <li>• <code>fork ... join</code> - Parallel activities</li>
+                <li>• <code>-&gt; [label] Action</code> - Activity with edge label</li>
               </ul>
             </div>
           </motion.div>
