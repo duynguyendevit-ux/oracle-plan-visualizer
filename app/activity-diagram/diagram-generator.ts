@@ -25,23 +25,43 @@ interface DiagramData {
 }
 
 export function parseActivityDiagram(input: string): DiagramData {
-  const lines = input.split('\n').map(l => l.trim()).filter(l => l)
+  const lines = input.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
   const lanes: Lane[] = []
   const nodes: Node[] = []
   const edges: Edge[] = []
   let nodeId = 0
   let currentLane = ''
+  const nodesByLabel = new Map<string, string>() // label -> nodeId
   
   const createNode = (type: Node['type'], label: string, lane: string): string => {
     const id = `node_${nodeId++}`
     nodes.push({ id, type, label, lane })
+    // Store node by label for cross-lane references
+    if (label) {
+      nodesByLabel.set(label.toLowerCase(), id)
+    }
     return id
   }
 
   let currentNode: string | null = null
+  let parsingCrossLane = false
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+
+    // Cross-lane connection: Lane1: node1 -> Lane2: node2
+    if (line.includes(':') && line.includes('->')) {
+      const match = line.match(/(.+?):\s*(.+?)\s*->\s*(.+?):\s*(.+)/)
+      if (match) {
+        const [, fromLane, fromLabel, toLane, toLabel] = match
+        const fromNodeId = nodesByLabel.get(fromLabel.trim().toLowerCase())
+        const toNodeId = nodesByLabel.get(toLabel.trim().toLowerCase())
+        if (fromNodeId && toNodeId) {
+          edges.push({ from: fromNodeId, to: toNodeId })
+        }
+        continue
+      }
+    }
 
     // Lane definition
     if (line.startsWith('lane')) {
@@ -51,6 +71,7 @@ export function parseActivityDiagram(input: string): DiagramData {
         const laneId = `lane_${lanes.length}`
         lanes.push({ id: laneId, label: laneLabel })
         currentLane = laneId
+        currentNode = null // Reset current node for new lane
       }
       continue
     }

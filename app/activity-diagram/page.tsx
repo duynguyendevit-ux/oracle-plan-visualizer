@@ -17,14 +17,18 @@ start
 -> check for new commands
 -> command queue
 if (queue empty?) then
-  -> [yes] idle
+  -> [yes] back to idle
 else
   -> [no] dispatch command
 endif
 
 lane Thread 3
 -> process command
--> end`)
+end
+
+# Cross-lane connections
+Thread 1: post command -> Thread 2: command queue
+Thread 2: dispatch command -> Thread 3: process command`)
 
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
