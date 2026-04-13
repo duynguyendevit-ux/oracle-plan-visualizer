@@ -45,6 +45,7 @@ export default function RootLayout({
     { name: '📝 SQL Extractor', href: '/sql-extractor' },
     { name: '🐛 Log Analyzer', href: '/log-analyzer' },
     { name: '📊 Excel Tools', href: '/excel-tools' },
+    { name: '🎨 Activity Diagram', href: '/activity-diagram' },
     { name: '⚙️ K8s Config', href: '/k8s-config' },
     { name: '🔐 Hash Generator', href: '/hash-generator' },
     { name: '📝 Diff Viewer', href: '/diff-viewer' },
