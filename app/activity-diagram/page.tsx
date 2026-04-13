@@ -109,6 +109,15 @@ Thread 2: dispatch command -> Thread 3: process command`)
     URL.revokeObjectURL(url)
   }
 
+  const copyInput = () => {
+    navigator.clipboard.writeText(input)
+  }
+
+  const copySVG = () => {
+    if (!svg) return
+    navigator.clipboard.writeText(svg)
+  }
+
   return (
     <div className="min-h-screen bg-[#faf8f5] dark:bg-[#0a0a0a]">
       <div className="max-w-[1800px] mx-auto p-8">
@@ -137,12 +146,21 @@ Thread 2: dispatch command -> Thread 3: process command`)
               <h2 className="text-xl font-semibold text-[#2c2416] dark:text-[#e8dcc8]">
                 Diagram Definition
               </h2>
-              <button
-                onClick={generateDiagram}
-                className="px-4 py-2 bg-[#d4a574] hover:bg-[#c49564] text-white rounded-md transition-colors font-medium"
-              >
-                Generate
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={copyInput}
+                  className="px-3 py-2 bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors text-sm"
+                  title="Copy definition"
+                >
+                  📋 Copy
+                </button>
+                <button
+                  onClick={generateDiagram}
+                  className="px-4 py-2 bg-[#d4a574] hover:bg-[#c49564] text-white rounded-md transition-colors font-medium"
+                >
+                  Generate
+                </button>
+              </div>
             </div>
 
             <textarea
@@ -188,6 +206,14 @@ Thread 2: dispatch command -> Thread 3: process command`)
                 Preview
               </h2>
               <div className="flex gap-2">
+                <button 
+                  onClick={copySVG}
+                  disabled={!svg}
+                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Copy SVG code"
+                >
+                  📋 Copy SVG
+                </button>
                 <button 
                   onClick={exportSVG}
                   disabled={!svg}
