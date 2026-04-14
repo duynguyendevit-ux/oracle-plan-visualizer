@@ -86,26 +86,18 @@ export default function LogAnalyzer() {
   const analyzeLogs = () => {
     setLoading(true)
     setError('')
-    setResults([])
-    setStats(null)
     
-    // Chunked processing for large files
-    const CHUNK_SIZE = 10000 // Process 10k lines at a time
-    const lines = input.split('\n')
-    const totalLines = lines.length
-    
-    const entries: LogEntry[] = []
-    let currentEntry: LogEntry | null = null
-    const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
-    
-    let processedLines = 0
-    
-    const processChunk = () => {
-      const start = processedLines
-      const end = Math.min(start + CHUNK_SIZE, totalLines)
-      
+    // Use setTimeout to allow UI to update
+    setTimeout(() => {
       try {
-        for (let index = start; index < end; index++) {
+        const lines = input.split('\n')
+        const entries: LogEntry[] = []
+        let currentEntry: LogEntry | null = null
+        
+        const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
+        
+        // Simple loop - faster than forEach for large arrays
+        for (let index = 0; index < lines.length; index++) {
           const line = lines[index]
           if (!line.trim()) continue
           
@@ -154,58 +146,37 @@ export default function LogAnalyzer() {
           }
         }
         
-        processedLines = end
-        
-        // Update progress
-        const progress = Math.round((processedLines / totalLines) * 100)
-        setUploadProgress(progress)
-        
-        // Continue processing or finish
-        if (processedLines < totalLines) {
-          // Use requestIdleCallback for non-blocking processing
-          if ('requestIdleCallback' in window) {
-            requestIdleCallback(processChunk)
-          } else {
-            setTimeout(processChunk, 0)
-          }
-        } else {
-          // Save last entry
-          if (currentEntry) {
-            entries.push(currentEntry)
-          }
-          
-          // Filter by level
-          let filtered = entries
-          if (filterLevel !== 'ALL') {
-            filtered = entries.filter(e => e.level === filterLevel)
-          }
-          
-          // Filter by search term
-          if (searchTerm) {
-            filtered = filtered.filter(e => 
-              e.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              e.stackTrace?.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
-            )
-          }
-          
-          setResults(filtered)
-          setStats({
-            total: entries.length,
-            ...levels,
-            filtered: filtered.length
-          })
-          setLoading(false)
-          setUploadProgress(0)
+        // Save last entry
+        if (currentEntry) {
+          entries.push(currentEntry)
         }
+        
+        // Filter by level
+        let filtered = entries
+        if (filterLevel !== 'ALL') {
+          filtered = entries.filter(e => e.level === filterLevel)
+        }
+        
+        // Filter by search term
+        if (searchTerm) {
+          filtered = filtered.filter(e => 
+            e.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            e.stackTrace?.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
+          )
+        }
+        
+        setResults(filtered)
+        setStats({
+          total: entries.length,
+          ...levels,
+          filtered: filtered.length
+        })
       } catch (err) {
         setError('Error parsing logs: ' + (err as Error).message)
+      } finally {
         setLoading(false)
-        setUploadProgress(0)
       }
-    }
-    
-    // Start processing
-    setTimeout(processChunk, 100)
+    }, 100)
   }
 
   const loadSample = () => {
@@ -365,7 +336,7 @@ export default function LogAnalyzer() {
             {uploadProgress > 0 && uploadProgress < 100 && (
               <div className="mb-3">
                 <div className="flex justify-between text-xs text-warm-600 mb-1">
-                  <span>{loading ? 'Processing...' : 'Uploading...'}</span>
+                  <span>Uploading...</span>
                   <span>{uploadProgress}%</span>
                 </div>
                 <div className="w-full bg-warm-200 rounded-full h-2 overflow-hidden">
