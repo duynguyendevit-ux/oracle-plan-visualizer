@@ -118,6 +118,24 @@ Thread 2: dispatch command -> Thread 3: process command`)
     navigator.clipboard.writeText(svg)
   }
 
+  const copyXML = () => {
+    if (!input) return
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="Activity Diagram" id="activity-diagram">
+    <mxGraphModel dx="1993" dy="1129" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Generated from text definition -->
+        <!-- ${input.split('\n').slice(0, 3).join(' / ')}... -->
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`
+    navigator.clipboard.writeText(xml)
+  }
+
   return (
     <div className="min-h-screen bg-[#faf8f5] dark:bg-[#0a0a0a]">
       <div className="max-w-[1800px] mx-auto p-8">
@@ -213,6 +231,14 @@ Thread 2: dispatch command -> Thread 3: process command`)
                   title="Copy SVG code"
                 >
                   📋 Copy SVG
+                </button>
+                <button 
+                  onClick={copyXML}
+                  disabled={!input}
+                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Copy XML code"
+                >
+                  📋 Copy XML
                 </button>
                 <button 
                   onClick={exportSVG}
