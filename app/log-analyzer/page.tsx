@@ -251,7 +251,7 @@ export default function LogAnalyzer() {
   }
 
   const shareData = () => {
-    if (!input) {
+    if (!input && results.length === 0) {
       setError('No data to share')
       return
     }
@@ -444,7 +444,7 @@ export default function LogAnalyzer() {
             
             <button
               onClick={shareData}
-              disabled={sharing || !input}
+              disabled={sharing || (!input && results.length === 0)}
               className="mt-2 w-full bg-warm-200 text-warm-800 py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {sharing ? (
@@ -489,8 +489,8 @@ export default function LogAnalyzer() {
                   </label>
                   <button
                     onClick={shareData}
-                    disabled={sharing}
-                    className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+                    disabled={sharing || !input}
+                    className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Share results via URL"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
