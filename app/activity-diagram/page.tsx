@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { parseActivityDiagram, generateSVG } from './diagram-generator'
+import { generateDrawioXML } from './xml-generator'
 
 export default function ActivityDiagram() {
   const [input, setInput] = useState(`lane Thread 1
@@ -85,20 +86,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
 
   const exportXML = () => {
     if (!input) return
-    // Generate draw.io XML format
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net">
-  <diagram name="Activity Diagram" id="activity-diagram">
-    <mxGraphModel dx="1993" dy="1129" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-        <!-- Generated from text definition -->
-        <!-- ${input.split('\n').slice(0, 3).join(' / ')}... -->
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>`
+    const xml = generateDrawioXML(input)
     
     const blob = new Blob([xml], { type: 'application/xml' })
     const url = URL.createObjectURL(blob)
@@ -120,19 +108,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
 
   const copyXML = () => {
     if (!input) return
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net">
-  <diagram name="Activity Diagram" id="activity-diagram">
-    <mxGraphModel dx="1993" dy="1129" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-        <!-- Generated from text definition -->
-        <!-- ${input.split('\n').slice(0, 3).join(' / ')}... -->
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>`
+    const xml = generateDrawioXML(input)
     navigator.clipboard.writeText(xml)
   }
 
