@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import pako from 'pako'
 
 interface LogEntry {
   line: number
@@ -24,7 +25,7 @@ export default function LogAnalyzer() {
   const [sharing, setSharing] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-  const MAX_SHARE_SIZE = 100 * 1024 // 100KB for URL sharing
+  const MAX_SHARE_SIZE = 500 * 1024 // 500KB for compressed sharing
 
   // Load shared data from URL on mount
   useEffect(() => {
@@ -32,18 +33,28 @@ export default function LogAnalyzer() {
     const sharedData = params.get('data')
     if (sharedData) {
       try {
-        const decoded = atob(sharedData)
-        const decompressed = JSON.parse(decoded)
-        setInput(decompressed.logs)
-        setSearchTerm(decompressed.search || '')
-        setFilterLevel(decompressed.filter || 'ALL')
+        // Decode from base64
+        const binaryString = atob(sharedData)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        
+        // Decompress
+        const decompressed = pako.inflate(bytes, { to: 'string' })
+        const data = JSON.parse(decompressed)
+        
+        setInput(data.logs)
+        setSearchTerm(data.search || '')
+        setFilterLevel(data.filter || 'ALL')
+        
         // Auto-analyze
         setTimeout(() => {
           const analyzeBtn = document.querySelector('button[data-analyze]') as HTMLButtonElement
           analyzeBtn?.click()
         }, 500)
       } catch (e) {
-        setError('Failed to load shared data')
+        setError('Failed to load shared data: ' + (e as Error).message)
       }
     }
   }, [])
@@ -256,16 +267,33 @@ export default function LogAnalyzer() {
       }
 
       const json = JSON.stringify(sharePayload)
-      const size = new Blob([json]).size
-
+      
+      // Compress with pako
+      const compressed = pako.deflate(json)
+      
+      // Check compressed size
+      const size = compressed.length
       if (size > MAX_SHARE_SIZE) {
-        setError(`Data too large to share via URL (${(size / 1024).toFixed(1)}KB). Maximum: ${MAX_SHARE_SIZE / 1024}KB. Try reducing log size.`)
+        setError(`Data too large to share (${(size / 1024).toFixed(1)}KB after compression). Maximum: ${MAX_SHARE_SIZE / 1024}KB. Try reducing log size.`)
         setSharing(false)
         return
       }
 
-      const encoded = btoa(json)
+      // Convert to base64
+      let binary = ''
+      for (let i = 0; i < compressed.length; i++) {
+        binary += String.fromCharCode(compressed[i])
+      }
+      const encoded = btoa(binary)
+      
       const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
+
+      // Check final URL length
+      if (url.length > 8000) {
+        setError(`URL too long (${url.length} chars). Try reducing log size.`)
+        setSharing(false)
+        return
+      }
 
       navigator.clipboard.writeText(url)
       setShareUrl(url)
@@ -438,7 +466,7 @@ export default function LogAnalyzer() {
             </button>
             
             <p className="mt-2 text-xs text-warm-500 text-center">
-              Max 100KB for URL sharing (~1000 log lines)
+              Max 500KB compressed (~5000 log lines)
             </p>
           </div>
         </div>
