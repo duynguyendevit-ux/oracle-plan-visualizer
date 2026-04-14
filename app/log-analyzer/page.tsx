@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface LogEntry {
   line: number
@@ -20,8 +20,33 @@ export default function LogAnalyzer() {
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [utcPlus7, setUtcPlus7] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [sharing, setSharing] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+  const MAX_SHARE_SIZE = 100 * 1024 // 100KB for URL sharing
+
+  // Load shared data from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sharedData = params.get('data')
+    if (sharedData) {
+      try {
+        const decoded = atob(sharedData)
+        const decompressed = JSON.parse(decoded)
+        setInput(decompressed.logs)
+        setSearchTerm(decompressed.search || '')
+        setFilterLevel(decompressed.filter || 'ALL')
+        // Auto-analyze
+        setTimeout(() => {
+          const analyzeBtn = document.querySelector('button[data-analyze]') as HTMLButtonElement
+          analyzeBtn?.click()
+        }, 500)
+      } catch (e) {
+        setError('Failed to load shared data')
+      }
+    }
+  }, [])
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -212,6 +237,44 @@ export default function LogAnalyzer() {
     }
   }
 
+  const shareData = () => {
+    if (!input) {
+      setError('No data to share')
+      return
+    }
+
+    setSharing(true)
+    setError('')
+
+    try {
+      const sharePayload = {
+        logs: input,
+        search: searchTerm,
+        filter: filterLevel
+      }
+
+      const json = JSON.stringify(sharePayload)
+      const size = new Blob([json]).size
+
+      if (size > MAX_SHARE_SIZE) {
+        setError(`Data too large to share via URL (${(size / 1024).toFixed(1)}KB). Maximum: ${MAX_SHARE_SIZE / 1024}KB. Try reducing log size.`)
+        setSharing(false)
+        return
+      }
+
+      const encoded = btoa(json)
+      const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
+
+      navigator.clipboard.writeText(url)
+      setShareUrl(url)
+      setTimeout(() => setShareUrl(''), 3000)
+    } catch (e) {
+      setError('Failed to generate share URL: ' + (e as Error).message)
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
     <div className="p-4 max-w-full mx-auto">
       {/* Stats */}
@@ -327,6 +390,7 @@ export default function LogAnalyzer() {
             <button
               onClick={analyzeLogs}
               disabled={loading}
+              data-analyze
               className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
@@ -341,6 +405,39 @@ export default function LogAnalyzer() {
                 'Analyze Logs'
               )}
             </button>
+            
+            {shareUrl && (
+              <div className="mt-3 p-3 bg-green-50 border border-green-300 rounded text-green-700 text-sm">
+                <span className="mr-2">✓</span>Share URL copied to clipboard!
+              </div>
+            )}
+            
+            <button
+              onClick={shareData}
+              disabled={sharing || !input}
+              className="mt-2 w-full bg-warm-200 text-warm-800 py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {sharing ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  <span>Share via URL</span>
+                </>
+              )}
+            </button>
+            
+            <p className="mt-2 text-xs text-warm-500 text-center">
+              Max 100KB for URL sharing (~1000 log lines)
+            </p>
           </div>
         </div>
 
