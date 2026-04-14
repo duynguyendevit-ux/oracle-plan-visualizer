@@ -51,15 +51,32 @@ export function parseActivityDiagram(input: string): DiagramData {
 
     // Cross-lane connection: Lane1: node1 -> Lane2: node2
     if (line.includes(':') && line.includes('->')) {
-      const match = line.match(/(.+?):\s*(.+?)\s*->\s*(.+?):\s*(.+)/)
-      if (match) {
-        const [, fromLane, fromLabel, toLane, toLabel] = match
-        const fromNodeId = nodesByLabel.get(fromLabel.trim().toLowerCase())
-        const toNodeId = nodesByLabel.get(toLabel.trim().toLowerCase())
-        if (fromNodeId && toNodeId) {
-          edges.push({ from: fromNodeId, to: toNodeId })
+      // Split by -> first, then split each part by :
+      const parts = line.split('->')
+      if (parts.length === 2) {
+        const fromPart = parts[0].trim()
+        const toPart = parts[1].trim()
+        
+        // Split by first : only
+        const fromColonIndex = fromPart.indexOf(':')
+        const toColonIndex = toPart.indexOf(':')
+        
+        if (fromColonIndex > 0 && toColonIndex > 0) {
+          const fromLane = fromPart.substring(0, fromColonIndex).trim()
+          const fromLabel = fromPart.substring(fromColonIndex + 1).trim()
+          const toLane = toPart.substring(0, toColonIndex).trim()
+          const toLabel = toPart.substring(toColonIndex + 1).trim()
+          
+          const fromNodeId = nodesByLabel.get(fromLabel.toLowerCase())
+          const toNodeId = nodesByLabel.get(toLabel.toLowerCase())
+          
+          if (fromNodeId && toNodeId) {
+            edges.push({ from: fromNodeId, to: toNodeId })
+          } else {
+            console.log('Cross-lane not found:', { fromLabel, toLabel, fromNodeId, toNodeId })
+          }
+          continue
         }
-        continue
       }
     }
 
