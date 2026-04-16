@@ -70,20 +70,26 @@ export default function LogAnalyzer() {
     }
 
     setError('')
-    setUploadProgress(0)
+    setUploadProgress(1) // Start at 1% to ensure visibility
+    const startTime = Date.now()
     const reader = new FileReader()
     
     reader.onprogress = (event) => {
       if (event.lengthComputable) {
         const progress = Math.round((event.loaded / event.total) * 100)
-        setUploadProgress(progress)
+        setUploadProgress(Math.max(1, progress)) // Never go below 1%
       }
     }
     
     reader.onload = (event) => {
       setInput(event.target?.result as string)
       setUploadProgress(100)
-      setTimeout(() => setUploadProgress(0), 1000)
+      
+      // Ensure progress bar shows for at least 500ms
+      const elapsed = Date.now() - startTime
+      const minDelay = Math.max(500 - elapsed, 0)
+      
+      setTimeout(() => setUploadProgress(0), minDelay + 1000)
     }
     
     reader.onerror = () => {
