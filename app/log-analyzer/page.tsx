@@ -226,6 +226,45 @@ export default function LogAnalyzer() {
     navigator.clipboard.writeText(text)
   }
 
+  const shareEntry = (entry: LogEntry) => {
+    try {
+      // Convert single entry to log format
+      let logText = `${entry.timestamp} ${entry.level} ${entry.message}`
+      if (entry.stackTrace && entry.stackTrace.length > 0) {
+        logText += '\n' + entry.stackTrace.join('\n')
+      }
+
+      const sharePayload = {
+        logs: logText,
+        search: '',
+        filter: 'ALL'
+      }
+
+      const json = JSON.stringify(sharePayload)
+      const compressed = pako.deflate(json)
+      
+      // Convert to base64
+      let binary = ''
+      for (let i = 0; i < compressed.length; i++) {
+        binary += String.fromCharCode(compressed[i])
+      }
+      const encoded = btoa(binary)
+      
+      const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
+      navigator.clipboard.writeText(url)
+      
+      // Show success feedback
+      const button = event?.target as HTMLElement
+      const originalText = button.innerHTML
+      button.innerHTML = '✓ Copied!'
+      setTimeout(() => {
+        button.innerHTML = originalText
+      }, 2000)
+    } catch (e) {
+      console.error('Failed to share entry:', e)
+    }
+  }
+
   const convertToUTC7 = (timestamp: string): string => {
     if (!timestamp) return timestamp
     try {
@@ -534,15 +573,26 @@ export default function LogAnalyzer() {
               <div className="space-y-3">
                 {results.map((entry, idx) => (
                   <div key={idx} className="bg-white rounded border border-warm-300/60 p-3 relative group">
-                    <button
-                      onClick={() => copyEntry(entry)}
-                      className="absolute top-2 right-2 p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Copy to clipboard"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => copyEntry(entry)}
+                        className="p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary"
+                        title="Copy to clipboard"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => { (window as any).event = e; shareEntry(entry); }}
+                        className="p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary"
+                        title="Share this log entry"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="flex items-start gap-2 mb-2">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
                         entry.level === 'ERROR' ? 'bg-red-100 text-red-700' :
