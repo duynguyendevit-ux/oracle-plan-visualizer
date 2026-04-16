@@ -104,7 +104,7 @@ export default function LogAnalyzer() {
   const analyzeLogs = () => {
     setLoading(true)
     setError('')
-    setAnalyzeProgress(0)
+    setAnalyzeProgress(1) // Start at 1% for visibility
     
     // Use setTimeout to allow UI to update
     setTimeout(() => {
@@ -118,14 +118,17 @@ export default function LogAnalyzer() {
         const totalLines = lines.length
         let processedLines = 0
         
+        // Calculate update interval based on file size
+        const updateInterval = Math.max(1, Math.floor(totalLines / 100)) // Update every 1%
+        
         // Simple loop - faster than forEach for large arrays
         for (let index = 0; index < lines.length; index++) {
           const line = lines[index]
           processedLines++
           
-          // Update progress every 1000 lines
-          if (processedLines % 1000 === 0) {
-            const progress = Math.round((processedLines / totalLines) * 100)
+          // Update progress at calculated intervals
+          if (processedLines % updateInterval === 0 || processedLines === totalLines) {
+            const progress = Math.min(99, Math.round((processedLines / totalLines) * 100))
             setAnalyzeProgress(progress)
           }
           
