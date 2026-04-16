@@ -20,6 +20,7 @@ export default function LogAnalyzer() {
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [analyzeProgress, setAnalyzeProgress] = useState(0)
   const [utcPlus7, setUtcPlus7] = useState(false)
   const [shareUrl, setShareUrl] = useState('')
   const [sharing, setSharing] = useState(false)
@@ -103,6 +104,7 @@ export default function LogAnalyzer() {
   const analyzeLogs = () => {
     setLoading(true)
     setError('')
+    setAnalyzeProgress(0)
     
     // Use setTimeout to allow UI to update
     setTimeout(() => {
@@ -113,9 +115,20 @@ export default function LogAnalyzer() {
         
         const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
         
+        const totalLines = lines.length
+        let processedLines = 0
+        
         // Simple loop - faster than forEach for large arrays
         for (let index = 0; index < lines.length; index++) {
           const line = lines[index]
+          processedLines++
+          
+          // Update progress every 1000 lines
+          if (processedLines % 1000 === 0) {
+            const progress = Math.round((processedLines / totalLines) * 100)
+            setAnalyzeProgress(progress)
+          }
+          
           if (!line.trim()) continue
           
           // Try JSON format first (Logstash/ELK)
@@ -188,8 +201,11 @@ export default function LogAnalyzer() {
           ...levels,
           filtered: filtered.length
         })
+        setAnalyzeProgress(100)
+        setTimeout(() => setAnalyzeProgress(0), 1000)
       } catch (err) {
         setError('Error parsing logs: ' + (err as Error).message)
+        setAnalyzeProgress(0)
       } finally {
         setLoading(false)
       }
@@ -390,6 +406,21 @@ export default function LogAnalyzer() {
                   <div 
                     className="bg-primary h-full transition-all duration-300 ease-out"
                     style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {analyzeProgress > 0 && analyzeProgress < 100 && (
+              <div className="mb-3">
+                <div className="flex justify-between text-xs text-warm-600 mb-1">
+                  <span>Analyzing logs...</span>
+                  <span>{analyzeProgress}%</span>
+                </div>
+                <div className="w-full bg-warm-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-primary h-full transition-all duration-300 ease-out"
+                    style={{ width: `${analyzeProgress}%` }}
                   />
                 </div>
               </div>
