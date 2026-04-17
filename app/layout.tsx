@@ -126,6 +126,7 @@ export default function RootLayout({
                   <Link
                     key={item.name}
                     href={item.href}
+                    onClick={() => setSidebarOpen(false)}
                     className={`relative flex items-center gap-3 px-4 py-3 rounded text-sm font-medium transition-colors group ${
                       isActive
                         ? darkMode ? 'bg-dark-primary-container text-dark-on-primary' : 'bg-primary/10 text-primary'
