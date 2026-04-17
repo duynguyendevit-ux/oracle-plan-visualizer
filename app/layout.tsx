@@ -126,15 +126,21 @@ export default function RootLayout({
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`flex items-center gap-3 px-4 py-3 rounded text-sm font-medium transition-colors ${
+                    className={`relative flex items-center gap-3 px-4 py-3 rounded text-sm font-medium transition-colors group ${
                       isActive
                         ? darkMode ? 'bg-dark-primary-container text-dark-on-primary' : 'bg-primary/10 text-primary'
                         : darkMode ? 'text-dark-on-surface hover:bg-dark-surface-container' : 'text-on-surface hover:bg-surface-container'
                     }`}
-                    title={sidebarCollapsed ? item.name : undefined}
                   >
                     <span className="flex-shrink-0">{item.icon}</span>
                     {!sidebarCollapsed && <span>{item.name}</span>}
+                    {sidebarCollapsed && (
+                      <span className={`absolute left-full ml-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 ${
+                        darkMode ? 'bg-dark-surface-container-highest text-dark-on-surface shadow-lg' : 'bg-surface-container-highest text-on-surface shadow-lg'
+                      }`}>
+                        {item.name}
+                      </span>
+                    )}
                   </Link>
                 )
               })}

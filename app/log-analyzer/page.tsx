@@ -24,6 +24,7 @@ export default function LogAnalyzer() {
   const [utcPlus7, setUtcPlus7] = useState(false)
   const [shareUrl, setShareUrl] = useState('')
   const [sharing, setSharing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
   const MAX_SHARE_SIZE = 500 * 1024 // 500KB for compressed sharing
@@ -63,10 +64,12 @@ export default function LogAnalyzer() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    processFile(file)
+  }
 
+  const processFile = (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
       setError(`File too large! Maximum size is 50MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
-      e.target.value = ''
       return
     }
 
@@ -99,6 +102,29 @@ export default function LogAnalyzer() {
     }
     
     reader.readAsText(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      processFile(file)
+    }
   }
 
   const analyzeLogs = () => {
@@ -433,12 +459,53 @@ export default function LogAnalyzer() {
               <label className="block text-sm font-medium text-warm-700 mb-2">
                 Upload Log File (Max 50MB)
               </label>
-              <input
-                type="file"
-                accept=".log,.txt,.json"
-                onChange={handleFileUpload}
-                className="block w-full text-sm text-warm-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
-              />
+              
+              {/* Drag & Drop Zone */}
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
+                  isDragging
+                    ? 'border-primary bg-primary/5 scale-[1.02]'
+                    : 'border-warm-300 hover:border-primary hover:bg-warm-50'
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".log,.txt,.json"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                
+                <div className="pointer-events-none">
+                  <svg
+                    className={`mx-auto h-12 w-12 mb-3 transition-colors ${
+                      isDragging ? 'text-primary' : 'text-warm-400'
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  
+                  <p className={`text-sm font-medium mb-1 ${
+                    isDragging ? 'text-primary' : 'text-warm-700'
+                  }`}>
+                    {isDragging ? 'Drop file here' : 'Drag & drop your log file here'}
+                  </p>
+                  
+                  <p className="text-xs text-warm-500">
+                    or click to browse • .log, .txt, .json • Max 50MB
+                  </p>
+                </div>
+              </div>
             </div>
             
             <textarea
