@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FixedSizeList as List } from 'react-window'
 
 interface LogEntry {
   line: number
@@ -25,7 +24,6 @@ export default function LogAnalyzer() {
   const [isDragging, setIsDragging] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-  const VIRTUAL_SCROLL_THRESHOLD = 100 // Use virtual scrolling when results > 100
 
   // Render single log entry
   const renderLogEntry = (entry: LogEntry, idx: number) => (
@@ -579,22 +577,7 @@ export default function LogAnalyzer() {
               <div className="h-full flex items-center justify-center text-warm-400">
                 <p className="text-sm font-serif">No logs to display</p>
               </div>
-            ) : results.length > VIRTUAL_SCROLL_THRESHOLD ? (
-              // Virtual scrolling for large results
-              <List
-                height={600}
-                itemCount={results.length}
-                itemSize={150}
-                width="100%"
-              >
-                {({ index, style }) => (
-                  <div style={style}>
-                    {renderLogEntry(results[index], index)}
-                  </div>
-                )}
-              </List>
             ) : (
-              // Normal rendering for small results
               <div className="space-y-3">
                 {results.map((entry, idx) => renderLogEntry(entry, idx))}
               </div>
