@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
 
-type Tool = 'analyzer' | 'formula' | 'diff'
+type Tool = 'analyzer' | 'formula' | 'diff' | 'calculator'
 
 export default function ExcelTools() {
   const [activeTool, setActiveTool] = useState<Tool>('analyzer')
@@ -23,6 +23,16 @@ export default function ExcelTools() {
   const [diffFile1, setDiffFile1] = useState<File | null>(null)
   const [diffFile2, setDiffFile2] = useState<File | null>(null)
   const [diffResult, setDiffResult] = useState<any>(null)
+
+  // Calculator state
+  const [calcFile, setCalcFile] = useState<File | null>(null)
+  const [calcData, setCalcData] = useState<any[]>([])
+  const [calcColumns, setCalcColumns] = useState<string[]>([])
+  const [calcCol1, setCalcCol1] = useState('')
+  const [calcCol2, setCalcCol2] = useState('')
+  const [calcOperation, setCalcOperation] = useState<'add' | 'subtract'>('add')
+  const [calcFormat, setCalcFormat] = useState<'number' | 'currency' | 'percentage'>('number')
+  const [calcResult, setCalcResult] = useState<any[]>([])
 
   // Data Analyzer functions
   const handleAnalyzerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,6 +212,71 @@ export default function ExcelTools() {
     setDiffResult(differences)
   }
 
+  // Calculator functions
+  const handleCalcUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setCalcFile(file)
+
+    let jsonData: any[]
+    if (file.name.endsWith('.csv')) {
+      const text = await file.text()
+      const workbook = XLSX.read(text, { type: 'string' })
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      jsonData = XLSX.utils.sheet_to_json(worksheet)
+    } else {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      jsonData = XLSX.utils.sheet_to_json(worksheet)
+    }
+
+    setCalcData(jsonData)
+    if (jsonData.length > 0) {
+      setCalcColumns(Object.keys(jsonData[0]))
+    }
+  }
+
+  const calculateColumns = () => {
+    if (!calcCol1 || !calcCol2 || calcData.length === 0) return
+
+    const results = calcData.map((row, idx) => {
+      const val1 = parseFloat(row[calcCol1]) || 0
+      const val2 = parseFloat(row[calcCol2]) || 0
+      const result = calcOperation === 'add' ? val1 + val2 : val1 - val2
+
+      let formatted = ''
+      switch (calcFormat) {
+        case 'currency':
+          formatted = `$${result.toFixed(2)}`
+          break
+        case 'percentage':
+          formatted = `${result.toFixed(2)}%`
+          break
+        default:
+          formatted = result.toFixed(2)
+      }
+
+      return {
+        row: idx + 1,
+        [calcCol1]: row[calcCol1],
+        [calcCol2]: row[calcCol2],
+        result: result,
+        formatted: formatted
+      }
+    })
+
+    setCalcResult(results)
+  }
+
+  const exportCalcResults = () => {
+    const ws = XLSX.utils.json_to_sheet(calcResult)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Results')
+    XLSX.writeFile(wb, `calculation-${Date.now()}.xlsx`)
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Tool Tabs */}
@@ -235,6 +310,16 @@ export default function ExcelTools() {
           }`}
         >
           🔍 Diff Viewer
+        </button>
+        <button
+          onClick={() => setActiveTool('calculator')}
+          className={`px-4 py-2 rounded-t font-medium transition-colors ${
+            activeTool === 'calculator'
+              ? 'bg-primary text-white'
+              : 'bg-surface-container text-on-surface hover:bg-surface-container-low'
+          }`}
+        >
+          🧮 Calculator
         </button>
       </div>
 
@@ -476,6 +561,136 @@ export default function ExcelTools() {
                         ))}
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Calculator */}
+      {activeTool === 'calculator' && (
+        <div className="bg-surface-container-low rounded-lg shadow-editorial p-4 md:p-6">
+          <h2 className="text-xl md:text-2xl font-serif font-semibold text-on-surface mb-4">Column Calculator</h2>
+          
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-on-surface mb-2">
+              Upload Excel/CSV File
+            </label>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleCalcUpload}
+              className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
+            />
+          </div>
+
+          {calcColumns.length > 0 && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-on-surface mb-2">Column 1</label>
+                  <select
+                    value={calcCol1}
+                    onChange={(e) => setCalcCol1(e.target.value)}
+                    className="w-full px-4 py-2 border border-outline-variant/60 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select column...</option>
+                    {calcColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-on-surface mb-2">Column 2</label>
+                  <select
+                    value={calcCol2}
+                    onChange={(e) => setCalcCol2(e.target.value)}
+                    className="w-full px-4 py-2 border border-outline-variant/60 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select column...</option>
+                    {calcColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-on-surface mb-2">Operation</label>
+                  <select
+                    value={calcOperation}
+                    onChange={(e) => setCalcOperation(e.target.value as 'add' | 'subtract')}
+                    className="w-full px-4 py-2 border border-outline-variant/60 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="add">Add (+)</option>
+                    <option value="subtract">Subtract (-)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-on-surface mb-2">Format</label>
+                  <select
+                    value={calcFormat}
+                    onChange={(e) => setCalcFormat(e.target.value as 'number' | 'currency' | 'percentage')}
+                    className="w-full px-4 py-2 border border-outline-variant/60 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="number">Number</option>
+                    <option value="currency">Currency ($)</option>
+                    <option value="percentage">Percentage (%)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                onClick={calculateColumns}
+                disabled={!calcCol1 || !calcCol2}
+                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Calculate
+              </button>
+
+              {calcResult.length > 0 && (
+                <div className="mt-6 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-on-surface">Results ({calcResult.length} rows)</h3>
+                    <button
+                      onClick={exportCalcResults}
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors text-sm flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Export Excel
+                    </button>
+                  </div>
+
+                  <div className="bg-surface-container rounded-lg p-4 max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-outline-variant/60">
+                        <tr>
+                          <th className="text-left py-2 px-2 text-on-surface">Row</th>
+                          <th className="text-left py-2 px-2 text-on-surface">{calcCol1}</th>
+                          <th className="text-left py-2 px-2 text-on-surface">{calcCol2}</th>
+                          <th className="text-left py-2 px-2 text-on-surface">Result</th>
+                          <th className="text-left py-2 px-2 text-on-surface">Formatted</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {calcResult.map((row, idx) => (
+                          <tr key={idx} className="border-b border-outline-variant/30">
+                            <td className="py-2 px-2 text-on-surface/70">{row.row}</td>
+                            <td className="py-2 px-2 text-on-surface">{row[calcCol1]}</td>
+                            <td className="py-2 px-2 text-on-surface">{row[calcCol2]}</td>
+                            <td className="py-2 px-2 text-on-surface font-mono">{row.result.toFixed(2)}</td>
+                            <td className="py-2 px-2 text-on-surface font-semibold">{row.formatted}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
