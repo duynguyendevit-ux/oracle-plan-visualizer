@@ -364,6 +364,16 @@ export default function LogAnalyzer() {
     }
   }
 
+  const clearAll = () => {
+    setInput('')
+    setSearchTerm('')
+    setFilterLevel('ALL')
+    setResults([])
+    setStats(null)
+    setError('')
+    setShareUrl('')
+  }
+
   const shareData = () => {
     if (!input && results.length === 0) {
       setError('No data to share')
@@ -600,24 +610,38 @@ export default function LogAnalyzer() {
               </select>
             </div>
             
-            <button
-              onClick={analyzeLogs}
-              disabled={loading}
-              data-analyze
-              className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Analyzing...</span>
-                </>
-              ) : (
-                'Analyze Logs'
-              )}
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={analyzeLogs}
+                disabled={loading}
+                data-analyze
+                className="flex-1 bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  'Analyze Logs'
+                )}
+              </button>
+              
+              <button
+                onClick={clearAll}
+                disabled={loading || (!input && results.length === 0)}
+                className="px-6 bg-warm-200 text-warm-800 py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                title="Clear all data"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Clear
+              </button>
+            </div>
             
             <p className="mt-2 text-xs text-warm-500 text-center">
               💡 Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze, <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+K</kbd> to search
