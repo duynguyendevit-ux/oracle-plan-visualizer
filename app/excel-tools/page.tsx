@@ -242,20 +242,57 @@ export default function ExcelTools() {
     if (!calcCol1 || !calcCol2 || calcData.length === 0) return
 
     const results = calcData.map((row, idx) => {
-      const val1 = parseFloat(row[calcCol1]) || 0
-      const val2 = parseFloat(row[calcCol2]) || 0
+      let val1: number
+      let val2: number
+      
+      // Try to parse as date first
+      const date1 = new Date(row[calcCol1])
+      const date2 = new Date(row[calcCol2])
+      
+      if (!isNaN(date1.getTime()) && !isNaN(date2.getTime())) {
+        // Both are valid dates - calculate difference in milliseconds, then convert
+        val1 = date1.getTime()
+        val2 = date2.getTime()
+      } else {
+        // Fall back to number parsing
+        val1 = parseFloat(row[calcCol1]) || 0
+        val2 = parseFloat(row[calcCol2]) || 0
+      }
+      
       const result = calcOperation === 'add' ? val1 + val2 : val1 - val2
 
       let formatted = ''
-      switch (calcFormat) {
-        case 'currency':
-          formatted = `$${result.toFixed(2)}`
-          break
-        case 'percentage':
-          formatted = `${result.toFixed(2)}%`
-          break
-        default:
-          formatted = result.toFixed(2)
+      
+      // Check if we're working with dates
+      if (!isNaN(date1.getTime()) && !isNaN(date2.getTime()) && calcOperation === 'subtract') {
+        // Convert milliseconds to days/hours/minutes
+        const diffMs = Math.abs(result)
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+        const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+        
+        if (diffDays > 0) {
+          formatted = `${diffDays}d ${diffHours}h ${diffMinutes}m ${diffSeconds}s`
+        } else if (diffHours > 0) {
+          formatted = `${diffHours}h ${diffMinutes}m ${diffSeconds}s`
+        } else if (diffMinutes > 0) {
+          formatted = `${diffMinutes}m ${diffSeconds}s`
+        } else {
+          formatted = `${diffSeconds}s`
+        }
+      } else {
+        // Regular number formatting
+        switch (calcFormat) {
+          case 'currency':
+            formatted = `$${result.toFixed(2)}`
+            break
+          case 'percentage':
+            formatted = `${result.toFixed(2)}%`
+            break
+          default:
+            formatted = result.toFixed(2)
+        }
       }
 
       return {
