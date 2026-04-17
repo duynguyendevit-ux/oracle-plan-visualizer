@@ -147,15 +147,30 @@ export default function RootLayout({
             </nav>
 
             {/* Toggle Button */}
-            <div className="absolute bottom-20 left-0 right-0 px-4">
+            <div className="absolute bottom-20 left-0 right-0 px-4 hidden lg:block">
               <button
                 onClick={toggleSidebarCollapsed}
-                className={`w-full px-4 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 group ${
                   darkMode ? 'text-dark-on-surface hover:bg-dark-surface-container' : 'text-on-surface hover:bg-surface-container'
                 }`}
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                {sidebarCollapsed ? '➡️' : '⬅️'}
-                {!sidebarCollapsed && <span>Collapse</span>}
+                <svg 
+                  className={`w-5 h-5 transition-transform duration-300 ${
+                    sidebarCollapsed ? 'rotate-180' : ''
+                  }`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M11 19l-7-7 7-7m8 14l-7-7 7-7" 
+                  />
+                </svg>
+                {!sidebarCollapsed && <span className="group-hover:translate-x-[-2px] transition-transform">Collapse</span>}
               </button>
             </div>
 
