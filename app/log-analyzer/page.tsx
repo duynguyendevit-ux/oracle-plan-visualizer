@@ -27,18 +27,18 @@ export default function LogAnalyzer() {
 
   // Render single log entry
   const renderLogEntry = (entry: LogEntry, idx: number) => (
-    <div key={idx} className="bg-white rounded border border-warm-300/60 p-3 relative group mb-3">
+    <div key={idx} className="bg-white rounded border border-warm-300/60 p-2 md:p-3 relative group mb-2 md:mb-3">
       <button
         onClick={() => copyEntry(entry)}
-        className="absolute top-2 right-2 p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-1.5 md:top-2 right-1.5 md:right-2 p-1 md:p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
         title="Copy to clipboard"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
       </button>
-      <div className="flex items-start gap-2 mb-2">
-        <span className={`px-2 py-1 rounded text-xs font-bold ${
+      <div className="flex items-start gap-1.5 md:gap-2 mb-1.5 md:mb-2 flex-wrap">
+        <span className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded text-[10px] md:text-xs font-bold ${
           entry.level === 'ERROR' ? 'bg-red-100 text-red-700' :
           entry.level === 'WARN' ? 'bg-orange-100 text-orange-700' :
           entry.level === 'INFO' ? 'bg-blue-100 text-blue-700' :
@@ -47,14 +47,14 @@ export default function LogAnalyzer() {
         }`}>
           {entry.level}
         </span>
-        <span className="text-xs text-warm-600 font-mono font-bold">{utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp}</span>
-        <span className="text-xs text-warm-500 ml-auto">Line {entry.line}</span>
+        <span className="text-[10px] md:text-xs text-warm-600 font-mono font-bold break-all">{utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp}</span>
+        <span className="text-[10px] md:text-xs text-warm-500 ml-auto">Line {entry.line}</span>
       </div>
-      <div className="text-sm font-mono text-warm-800 mb-2">{entry.message}</div>
+      <div className="text-xs md:text-sm font-mono text-warm-800 mb-1.5 md:mb-2 break-words">{entry.message}</div>
       {entry.stackTrace && entry.stackTrace.length > 0 && (
-        <details className="text-xs font-mono text-warm-600">
+        <details className="text-[10px] md:text-xs font-mono text-warm-600">
           <summary className="cursor-pointer hover:text-primary">Stack trace ({entry.stackTrace.length} lines)</summary>
-          <pre className="mt-2 p-2 bg-warm-100 rounded overflow-x-auto">
+          <pre className="mt-1.5 md:mt-2 p-1.5 md:p-2 bg-warm-100 rounded overflow-x-auto text-[10px] md:text-xs">
             {entry.stackTrace.join('\n')}
           </pre>
         </details>
@@ -339,34 +339,34 @@ export default function LogAnalyzer() {
     <div className="p-4 max-w-full mx-auto">
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-4">
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">Total</div>
-            <div className="text-2xl font-serif font-semibold text-warm-800">{stats.total}</div>
+        <div className="grid grid-cols-3 md:grid-cols-7 gap-2 md:gap-3 mb-3 md:mb-4">
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">Total</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-warm-800">{stats.total}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">Filtered</div>
-            <div className="text-2xl font-serif font-semibold text-primary">{stats.filtered}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">Filtered</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-primary">{stats.filtered}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">ERROR</div>
-            <div className="text-2xl font-serif font-semibold text-red-600">{stats.ERROR}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">ERROR</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-red-600">{stats.ERROR}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">WARN</div>
-            <div className="text-2xl font-serif font-semibold text-orange-600">{stats.WARN}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">WARN</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-orange-600">{stats.WARN}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">INFO</div>
-            <div className="text-2xl font-serif font-semibold text-blue-600">{stats.INFO}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">INFO</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-blue-600">{stats.INFO}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">DEBUG</div>
-            <div className="text-2xl font-serif font-semibold text-gray-600">{stats.DEBUG}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">DEBUG</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-gray-600">{stats.DEBUG}</div>
           </div>
-          <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
-            <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">TRACE</div>
-            <div className="text-2xl font-serif font-semibold text-gray-500">{stats.TRACE}</div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">TRACE</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-gray-500">{stats.TRACE}</div>
           </div>
         </div>
       )}
