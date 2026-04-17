@@ -512,7 +512,7 @@ export default function LogAnalyzer() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Paste Spring Boot logs here or upload a file..."
-              className="w-full h-64 md:h-96 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
+              className="w-full h-48 md:h-64 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
             
             <div className="mt-3 flex gap-2">
