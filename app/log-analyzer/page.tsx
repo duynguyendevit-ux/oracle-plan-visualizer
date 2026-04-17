@@ -61,6 +61,30 @@ export default function LogAnalyzer() {
     }
   }, [])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Enter or Cmd+Enter: Analyze logs
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (!loading && input) {
+          analyzeLogs()
+        }
+      }
+      
+      // Ctrl+K or Cmd+K: Focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
+        searchInput?.focus()
+        searchInput?.select()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [loading, input])
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -555,6 +579,10 @@ export default function LogAnalyzer() {
                 'Analyze Logs'
               )}
             </button>
+            
+            <p className="mt-2 text-xs text-warm-500 text-center">
+              💡 Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze, <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+K</kbd> to search
+            </p>
             
             {shareUrl && (
               <div className="mt-3 p-3 bg-green-50 border border-green-300 rounded text-green-700 text-sm">
