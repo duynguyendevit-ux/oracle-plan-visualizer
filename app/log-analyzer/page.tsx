@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import pako from 'pako'
 import { FixedSizeList as List } from 'react-window'
 
 interface LogEntry {
@@ -23,12 +22,9 @@ export default function LogAnalyzer() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [analyzeProgress, setAnalyzeProgress] = useState(0)
   const [utcPlus7, setUtcPlus7] = useState(false)
-  const [shareUrl, setShareUrl] = useState('')
-  const [sharing, setSharing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-  const MAX_SHARE_SIZE = 500 * 1024 // 500KB for compressed sharing
   const VIRTUAL_SCROLL_THRESHOLD = 100 // Use virtual scrolling when results > 100
 
   // Render single log entry
@@ -67,38 +63,6 @@ export default function LogAnalyzer() {
       )}
     </div>
   )
-
-  // Load shared data from URL on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const sharedData = params.get('data')
-    if (sharedData) {
-      try {
-        // Decode from base64
-        const binaryString = atob(sharedData)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
-        }
-        
-        // Decompress
-        const decompressed = pako.inflate(bytes, { to: 'string' })
-        const data = JSON.parse(decompressed)
-        
-        setInput(data.logs)
-        setSearchTerm(data.search || '')
-        setFilterLevel(data.filter || 'ALL')
-        
-        // Auto-analyze
-        setTimeout(() => {
-          const analyzeBtn = document.querySelector('button[data-analyze]') as HTMLButtonElement
-          analyzeBtn?.click()
-        }, 500)
-      } catch (e) {
-        setError('Failed to load shared data: ' + (e as Error).message)
-      }
-    }
-  }, [])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -371,75 +335,6 @@ export default function LogAnalyzer() {
     setResults([])
     setStats(null)
     setError('')
-    setShareUrl('')
-  }
-
-  const shareData = () => {
-    if (!input && results.length === 0) {
-      setError('No data to share')
-      return
-    }
-
-    setSharing(true)
-    setError('')
-
-    try {
-      // If we have results, share the filtered results instead of raw input
-      let dataToShare = input
-      if (results.length > 0) {
-        // Convert results back to log format
-        dataToShare = results.map(entry => {
-          let line = `${entry.timestamp} ${entry.level} ${entry.message}`
-          if (entry.stackTrace && entry.stackTrace.length > 0) {
-            line += '\n' + entry.stackTrace.join('\n')
-          }
-          return line
-        }).join('\n')
-      }
-
-      const sharePayload = {
-        logs: dataToShare,
-        search: searchTerm,
-        filter: filterLevel
-      }
-
-      const json = JSON.stringify(sharePayload)
-      
-      // Compress with pako
-      const compressed = pako.deflate(json)
-      
-      // Check compressed size
-      const size = compressed.length
-      if (size > MAX_SHARE_SIZE) {
-        setError(`Data too large to share (${(size / 1024).toFixed(1)}KB after compression). Maximum: ${MAX_SHARE_SIZE / 1024}KB. Try reducing log size.`)
-        setSharing(false)
-        return
-      }
-
-      // Convert to base64
-      let binary = ''
-      for (let i = 0; i < compressed.length; i++) {
-        binary += String.fromCharCode(compressed[i])
-      }
-      const encoded = btoa(binary)
-      
-      const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
-
-      // Check final URL length
-      if (url.length > 8000) {
-        setError(`URL too long (${url.length} chars). Try reducing log size.`)
-        setSharing(false)
-        return
-      }
-
-      navigator.clipboard.writeText(url)
-      setShareUrl(url)
-      setTimeout(() => setShareUrl(''), 3000)
-    } catch (e) {
-      setError('Failed to generate share URL: ' + (e as Error).message)
-    } finally {
-      setSharing(false)
-    }
   }
 
   return (
@@ -646,39 +541,6 @@ export default function LogAnalyzer() {
             <p className="mt-2 text-xs text-warm-500 text-center">
               💡 Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze, <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+K</kbd> to search
             </p>
-            
-            {shareUrl && (
-              <div className="mt-3 p-3 bg-green-50 border border-green-300 rounded text-green-700 text-sm">
-                <span className="mr-2">✓</span>Share URL copied to clipboard!
-              </div>
-            )}
-            
-            <button
-              onClick={shareData}
-              disabled={sharing || (!input && results.length === 0)}
-              className="mt-2 w-full bg-warm-200 text-warm-800 py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {sharing ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Generating...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                  </svg>
-                  <span>Share via URL</span>
-                </>
-              )}
-            </button>
-            
-            <p className="mt-2 text-xs text-warm-500 text-center">
-              Max 500KB compressed (~5000 log lines)
-            </p>
           </div>
         </div>
 
@@ -698,17 +560,6 @@ export default function LogAnalyzer() {
                     />
                     <span className="font-medium">UTC+7</span>
                   </label>
-                  <button
-                    onClick={shareData}
-                    disabled={sharing || results.length === 0}
-                    className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Share filtered results via URL"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                    </svg>
-                    Share
-                  </button>
                   <button
                     onClick={exportResults}
                     className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
