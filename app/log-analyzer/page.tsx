@@ -503,12 +503,12 @@ export default function LogAnalyzer() {
               </select>
             </div>
             
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-col sm:flex-row gap-2">
               <button
                 onClick={analyzeLogs}
                 disabled={loading}
                 data-analyze
-                className="flex-1 bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 bg-primary text-white py-3 sm:py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
               >
                 {loading ? (
                   <>
@@ -526,7 +526,7 @@ export default function LogAnalyzer() {
               <button
                 onClick={clearAll}
                 disabled={loading || (!input && results.length === 0)}
-                className="px-6 bg-warm-200 text-warm-800 py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="sm:w-auto w-full px-6 bg-warm-200 text-warm-800 py-3 sm:py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
                 title="Clear all data"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -536,7 +536,7 @@ export default function LogAnalyzer() {
               </button>
             </div>
             
-            <p className="mt-2 text-xs text-warm-500 text-center">
+            <p className="mt-2 text-xs text-warm-500 text-center hidden sm:block">
               💡 Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze, <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+K</kbd> to search
             </p>
           </div>
@@ -544,28 +544,28 @@ export default function LogAnalyzer() {
 
         {/* Results Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
-          <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
+          <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex flex-wrap justify-between items-center gap-2">
             <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Results</h3>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               {results.length > 0 && (
                 <>
-                  <label className="flex items-center gap-2 text-sm text-warm-700 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs sm:text-sm text-warm-700 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={utcPlus7}
                       onChange={(e) => setUtcPlus7(e.target.checked)}
-                      className="rounded border-warm-300 text-primary focus:ring-primary"
+                      className="rounded border-warm-300 text-primary focus:ring-primary w-4 h-4"
                     />
                     <span className="font-medium">UTC+7</span>
                   </label>
                   <button
                     onClick={exportResults}
-                    className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+                    className="text-xs sm:text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1 active:scale-95 transition-transform px-2 py-1 rounded"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Export
+                    <span className="hidden sm:inline">Export</span>
                   </button>
                 </>
               )}

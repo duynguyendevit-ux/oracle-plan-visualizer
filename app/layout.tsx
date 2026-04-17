@@ -173,7 +173,7 @@ export default function RootLayout({
           {/* Mobile overlay */}
           {sidebarOpen && (
             <div
-              className="fixed inset-0 bg-warm-900/20 z-40 lg:hidden"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden transition-opacity"
               onClick={() => setSidebarOpen(false)}
             />
           )}
@@ -181,20 +181,21 @@ export default function RootLayout({
           {/* Main content */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Top bar */}
-            <div className={`h-16 ${darkMode ? 'bg-dark-surface-container-low border-dark-outline-variant/20' : 'bg-surface-container-low border-outline-variant/60'} border-b flex items-center px-6`}>
+            <div className={`h-14 lg:h-16 ${darkMode ? 'bg-dark-surface-container-low border-dark-outline-variant/20' : 'bg-surface-container-low border-outline-variant/60'} border-b flex items-center px-4 lg:px-6`}>
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={`lg:hidden mr-4 p-2 rounded ${
+                className={`lg:hidden mr-3 p-2 rounded-lg active:scale-95 transition-transform ${
                   darkMode ? 'hover:bg-dark-surface-container' : 'hover:bg-surface-container'
                 }`}
+                aria-label="Toggle menu"
               >
                 <svg className={`w-6 h-6 ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               
-              <div className="flex-1">
-                <h2 className={`text-xl font-serif font-semibold ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`}>
+              <div className="flex-1 min-w-0">
+                <h2 className={`text-base lg:text-xl font-serif font-semibold truncate ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`}>
                   {navigation.find(n => n.href === pathname)?.name || 'MyDevTools'}
                 </h2>
               </div>
@@ -202,17 +203,18 @@ export default function RootLayout({
               {/* Dark Mode Toggle */}
               <button
                 onClick={toggleDarkMode}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`p-2 lg:p-2.5 rounded-lg transition-colors active:scale-95 ${
                   darkMode ? 'text-dark-primary hover:bg-dark-surface-container' : 'text-primary hover:bg-surface-container'
                 }`}
                 title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                aria-label={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
               >
-                {darkMode ? '☀️' : '🌙'}
+                <span className="text-xl">{darkMode ? '☀️' : '🌙'}</span>
               </button>
             </div>
 
             {/* Page content */}
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1 overflow-auto pb-safe">
               {children}
             </main>
           </div>
