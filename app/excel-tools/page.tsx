@@ -33,6 +33,9 @@ export default function ExcelTools() {
   const [calcOperation, setCalcOperation] = useState<'add' | 'subtract'>('add')
   const [calcFormat, setCalcFormat] = useState<'number' | 'currency' | 'percentage'>('number')
   const [calcResult, setCalcResult] = useState<any[]>([])
+  const [calcFilter, setCalcFilter] = useState('')
+  const [calcPage, setCalcPage] = useState(1)
+  const [calcPageSize, setCalcPageSize] = useState(50)
 
   // Data Analyzer functions
   const handleAnalyzerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,12 +249,19 @@ export default function ExcelTools() {
       let val2: number
       let isDateCalc = false
       
-      // Helper function to parse custom date format: "HH:MM:SS DD/MM/YYYY"
+      // Helper function to parse custom date format: "HH:MM:SS.mmm DD/MM/YYYY" or "HH:MM:SS DD/MM/YYYY"
       const parseCustomDate = (dateStr: string): Date | null => {
         if (typeof dateStr !== 'string') return null
         
-        // Match format: "16:16:32 20/03/2026"
-        const match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        // Match format with milliseconds: "16:16:32.123 20/03/2026"
+        let match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (match) {
+          const [, hours, minutes, seconds, milliseconds, day, month, year] = match
+          return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes), parseInt(seconds), parseInt(milliseconds))
+        }
+        
+        // Match format without milliseconds: "16:16:32 20/03/2026"
+        match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
         if (match) {
           const [, hours, minutes, seconds, day, month, year] = match
           return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes), parseInt(seconds))
@@ -282,21 +292,22 @@ export default function ExcelTools() {
       
       // Check if we're working with dates
       if (isDateCalc && calcOperation === 'subtract') {
-        // Convert milliseconds to days/hours/minutes/seconds
+        // Convert milliseconds to days/hours/minutes/seconds/milliseconds
         const diffMs = Math.abs(result)
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
         const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
         const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+        const diffMilliseconds = Math.floor(diffMs % 1000)
         
         if (diffDays > 0) {
-          formatted = `${diffDays}d ${diffHours}h ${diffMinutes}m ${diffSeconds}s`
+          formatted = `${diffDays}d ${diffHours}h ${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
         } else if (diffHours > 0) {
-          formatted = `${diffHours}h ${diffMinutes}m ${diffSeconds}s`
+          formatted = `${diffHours}h ${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
         } else if (diffMinutes > 0) {
-          formatted = `${diffMinutes}m ${diffSeconds}s`
+          formatted = `${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
         } else {
-          formatted = `${diffSeconds}s`
+          formatted = `${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
         }
       } else {
         // Regular number formatting
@@ -707,47 +718,139 @@ export default function ExcelTools() {
                 Calculate
               </button>
 
-              {calcResult.length > 0 && (
-                <div className="mt-6 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-on-surface">Results ({calcResult.length} rows)</h3>
-                    <button
-                      onClick={exportCalcResults}
-                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors text-sm flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Export Excel
-                    </button>
-                  </div>
+              {calcResult.length > 0 && (() => {
+                // Filter results
+                const filteredResults = calcResult.filter(row => {
+                  if (!calcFilter) return true
+                  const searchLower = calcFilter.toLowerCase()
+                  return (
+                    row.row.toString().includes(searchLower) ||
+                    row[calcCol1]?.toString().toLowerCase().includes(searchLower) ||
+                    row[calcCol2]?.toString().toLowerCase().includes(searchLower) ||
+                    row.formatted.toLowerCase().includes(searchLower)
+                  )
+                })
 
-                  <div className="bg-surface-container rounded-lg p-4 max-h-96 overflow-y-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-outline-variant/60">
-                        <tr>
-                          <th className="text-left py-2 px-2 text-on-surface">Row</th>
-                          <th className="text-left py-2 px-2 text-on-surface">{calcCol1}</th>
-                          <th className="text-left py-2 px-2 text-on-surface">{calcCol2}</th>
-                          <th className="text-left py-2 px-2 text-on-surface">Result</th>
-                          <th className="text-left py-2 px-2 text-on-surface">Formatted</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {calcResult.map((row, idx) => (
-                          <tr key={idx} className="border-b border-outline-variant/30">
-                            <td className="py-2 px-2 text-on-surface/70">{row.row}</td>
-                            <td className="py-2 px-2 text-on-surface">{row[calcCol1]}</td>
-                            <td className="py-2 px-2 text-on-surface">{row[calcCol2]}</td>
-                            <td className="py-2 px-2 text-on-surface font-mono">{row.result.toFixed(2)}</td>
-                            <td className="py-2 px-2 text-on-surface font-semibold">{row.formatted}</td>
+                // Pagination
+                const totalPages = Math.ceil(filteredResults.length / calcPageSize)
+                const startIdx = (calcPage - 1) * calcPageSize
+                const endIdx = startIdx + calcPageSize
+                const paginatedResults = filteredResults.slice(startIdx, endIdx)
+
+                return (
+                  <div className="mt-6 space-y-4">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div className="flex-1 w-full md:w-auto">
+                        <input
+                          type="text"
+                          value={calcFilter}
+                          onChange={(e) => {
+                            setCalcFilter(e.target.value)
+                            setCalcPage(1) // Reset to first page on filter
+                          }}
+                          placeholder="Filter results..."
+                          className="w-full px-4 py-2 border border-outline-variant/60 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-2 focus:ring-primary text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-on-surface/70">
+                          {filteredResults.length} of {calcResult.length} rows
+                        </span>
+                        <button
+                          onClick={exportCalcResults}
+                          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors text-sm flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          <span className="hidden sm:inline">Export Excel</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container rounded-lg p-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-outline-variant/60">
+                          <tr>
+                            <th className="text-left py-2 px-2 text-on-surface">Row</th>
+                            <th className="text-left py-2 px-2 text-on-surface">{calcCol1}</th>
+                            <th className="text-left py-2 px-2 text-on-surface">{calcCol2}</th>
+                            <th className="text-left py-2 px-2 text-on-surface">Result</th>
+                            <th className="text-left py-2 px-2 text-on-surface">Formatted</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {paginatedResults.map((row, idx) => (
+                            <tr key={idx} className="border-b border-outline-variant/30">
+                              <td className="py-2 px-2 text-on-surface/70">{row.row}</td>
+                              <td className="py-2 px-2 text-on-surface">{row[calcCol1]}</td>
+                              <td className="py-2 px-2 text-on-surface">{row[calcCol2]}</td>
+                              <td className="py-2 px-2 text-on-surface font-mono">{row.result.toFixed(2)}</td>
+                              <td className="py-2 px-2 text-on-surface font-semibold">{row.formatted}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-on-surface">Rows per page:</label>
+                          <select
+                            value={calcPageSize}
+                            onChange={(e) => {
+                              setCalcPageSize(Number(e.target.value))
+                              setCalcPage(1)
+                            }}
+                            className="px-3 py-1 border border-outline-variant/60 rounded bg-surface-container-lowest text-on-surface text-sm"
+                          >
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setCalcPage(1)}
+                            disabled={calcPage === 1}
+                            className="px-3 py-1 border border-outline-variant/60 rounded bg-surface-container text-on-surface text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-low"
+                          >
+                            First
+                          </button>
+                          <button
+                            onClick={() => setCalcPage(p => Math.max(1, p - 1))}
+                            disabled={calcPage === 1}
+                            className="px-3 py-1 border border-outline-variant/60 rounded bg-surface-container text-on-surface text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-low"
+                          >
+                            Previous
+                          </button>
+                          <span className="text-sm text-on-surface px-2">
+                            Page {calcPage} of {totalPages}
+                          </span>
+                          <button
+                            onClick={() => setCalcPage(p => Math.min(totalPages, p + 1))}
+                            disabled={calcPage === totalPages}
+                            className="px-3 py-1 border border-outline-variant/60 rounded bg-surface-container text-on-surface text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-low"
+                          >
+                            Next
+                          </button>
+                          <button
+                            onClick={() => setCalcPage(totalPages)}
+                            disabled={calcPage === totalPages}
+                            className="px-3 py-1 border border-outline-variant/60 rounded bg-surface-container text-on-surface text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-low"
+                          >
+                            Last
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </div>
           )}
         </div>
