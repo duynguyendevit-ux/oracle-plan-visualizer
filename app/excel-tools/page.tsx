@@ -244,15 +244,32 @@ export default function ExcelTools() {
     const results = calcData.map((row, idx) => {
       let val1: number
       let val2: number
+      let isDateCalc = false
       
-      // Try to parse as date first
-      const date1 = new Date(row[calcCol1])
-      const date2 = new Date(row[calcCol2])
+      // Helper function to parse custom date format: "HH:MM:SS DD/MM/YYYY"
+      const parseCustomDate = (dateStr: string): Date | null => {
+        if (typeof dateStr !== 'string') return null
+        
+        // Match format: "16:16:32 20/03/2026"
+        const match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (match) {
+          const [, hours, minutes, seconds, day, month, year] = match
+          return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes), parseInt(seconds))
+        }
+        
+        // Try standard Date parsing as fallback
+        const date = new Date(dateStr)
+        return isNaN(date.getTime()) ? null : date
+      }
       
-      if (!isNaN(date1.getTime()) && !isNaN(date2.getTime())) {
-        // Both are valid dates - calculate difference in milliseconds, then convert
+      const date1 = parseCustomDate(row[calcCol1])
+      const date2 = parseCustomDate(row[calcCol2])
+      
+      if (date1 && date2) {
+        // Both are valid dates
         val1 = date1.getTime()
         val2 = date2.getTime()
+        isDateCalc = true
       } else {
         // Fall back to number parsing
         val1 = parseFloat(row[calcCol1]) || 0
@@ -264,8 +281,8 @@ export default function ExcelTools() {
       let formatted = ''
       
       // Check if we're working with dates
-      if (!isNaN(date1.getTime()) && !isNaN(date2.getTime()) && calcOperation === 'subtract') {
-        // Convert milliseconds to days/hours/minutes
+      if (isDateCalc && calcOperation === 'subtract') {
+        // Convert milliseconds to days/hours/minutes/seconds
         const diffMs = Math.abs(result)
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
         const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
