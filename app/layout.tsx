@@ -18,21 +18,7 @@ export default function RootLayout({
     }
     return false
   })
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('darkMode')
-      return saved ? JSON.parse(saved) : false
-    }
-    return false
-  })
   const pathname = usePathname()
-
-  // Save preferences to localStorage
-  const toggleDarkMode = () => {
-    const newValue = !darkMode
-    setDarkMode(newValue)
-    localStorage.setItem('darkMode', JSON.stringify(newValue))
-  }
 
   const toggleSidebarCollapsed = () => {
     const newValue = !sidebarCollapsed
@@ -89,13 +75,13 @@ export default function RootLayout({
   ]
 
   return (
-    <html lang="en" className={darkMode ? 'dark' : ''}>
+    <html lang="en" >
       <body>
         <div className="flex h-screen overflow-hidden">
           {/* Sidebar */}
-          <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${darkMode ? 'bg-dark-surface-container-low border-dark-outline-variant/20' : 'bg-surface-container-low border-outline-variant/60'} border-r transition-all duration-300 ease-in-out`}>
+          <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-surface-container-low border-outline-variant/60 border-r transition-all duration-300 ease-in-out`}>
             {/* Logo */}
-            <div className={`h-16 flex items-center gap-3 px-6 ${darkMode ? 'bg-dark-surface-container border-dark-outline-variant/20' : 'bg-surface-container border-outline-variant/60'} border-b`}>
+            <div className={`h-16 flex items-center gap-3 px-6 bg-surface-container border-outline-variant/60 border-b`}>
               {!sidebarCollapsed && (
                 <>
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden">
@@ -104,8 +90,8 @@ export default function RootLayout({
                     </video>
                   </div>
                   <div>
-                    <h1 className={`text-lg font-serif font-semibold ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`}>MyDevTools</h1>
-                    <p className={`text-xs ${darkMode ? 'text-dark-on-surface/60' : 'text-on-surface/60'} italic`}>Làm ko bug đời ko nể</p>
+                    <h1 className={`text-lg font-serif font-semibold text-on-surface`}>MyDevTools</h1>
+                    <p className={`text-xs text-on-surface/60 italic`}>Làm ko bug đời ko nể</p>
                   </div>
                 </>
               )}
@@ -129,15 +115,15 @@ export default function RootLayout({
                     onClick={() => setSidebarOpen(false)}
                     className={`relative flex items-center gap-3 px-4 py-3 rounded text-sm font-medium transition-colors group ${
                       isActive
-                        ? darkMode ? 'bg-dark-primary-container text-dark-on-primary' : 'bg-primary/10 text-primary'
-                        : darkMode ? 'text-dark-on-surface hover:bg-dark-surface-container' : 'text-on-surface hover:bg-surface-container'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-on-surface hover:bg-surface-container'
                     }`}
                   >
                     <span className="flex-shrink-0">{item.icon}</span>
                     {!sidebarCollapsed && <span>{item.name}</span>}
                     {sidebarCollapsed && (
                       <span className={`absolute left-full ml-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 ${
-                        darkMode ? 'bg-dark-surface-container-highest text-dark-on-surface shadow-lg' : 'bg-surface-container-highest text-on-surface shadow-lg'
+                        'bg-surface-container-highest text-on-surface shadow-lg'
                       }`}>
                         {item.name}
                       </span>
@@ -152,7 +138,7 @@ export default function RootLayout({
               <button
                 onClick={toggleSidebarCollapsed}
                 className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 group ${
-                  darkMode ? 'text-dark-on-surface hover:bg-dark-surface-container' : 'text-on-surface hover:bg-surface-container'
+                  'text-on-surface hover:bg-surface-container'
                 }`}
                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
@@ -176,9 +162,9 @@ export default function RootLayout({
             </div>
 
             {/* Footer */}
-            <div className={`absolute bottom-0 left-0 right-0 p-4 ${darkMode ? 'border-dark-outline-variant/20' : 'border-outline-variant/60'} border-t`}>
+            <div className={`absolute bottom-0 left-0 right-0 p-4 border-outline-variant/60 border-t`}>
               {!sidebarCollapsed && (
-                <div className={`text-xs ${darkMode ? 'text-dark-on-surface/60' : 'text-on-surface/60'}`}>
+                <div className={`text-xs text-on-surface/60`}>
                   <p className="font-medium">MyDevTools</p>
                   <p>v2.0.0</p>
                 </div>
@@ -197,36 +183,27 @@ export default function RootLayout({
           {/* Main content */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Top bar */}
-            <div className={`h-14 lg:h-16 ${darkMode ? 'bg-dark-surface-container-low border-dark-outline-variant/20' : 'bg-surface-container-low border-outline-variant/60'} border-b flex items-center px-4 lg:px-6`}>
+            <div className={`h-14 lg:h-16 bg-surface-container-low border-outline-variant/60 border-b flex items-center px-4 lg:px-6`}>
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className={`lg:hidden mr-3 p-2 rounded-lg active:scale-95 transition-transform ${
-                  darkMode ? 'hover:bg-dark-surface-container' : 'hover:bg-surface-container'
+                  'hover:bg-surface-container'
                 }`}
                 aria-label="Toggle menu"
               >
-                <svg className={`w-6 h-6 ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-6 h-6 text-on-surface`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               
               <div className="flex-1 min-w-0">
-                <h2 className={`text-base lg:text-xl font-serif font-semibold truncate ${darkMode ? 'text-dark-on-surface' : 'text-on-surface'}`}>
+                <h2 className={`text-base lg:text-xl font-serif font-semibold truncate text-on-surface`}>
                   {navigation.find(n => n.href === pathname)?.name || 'MyDevTools'}
                 </h2>
               </div>
               
               {/* Dark Mode Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className={`p-2 lg:p-2.5 rounded-lg transition-colors active:scale-95 ${
-                  darkMode ? 'text-dark-primary hover:bg-dark-surface-container' : 'text-primary hover:bg-surface-container'
-                }`}
-                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                aria-label={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              >
-                <span className="text-xl">{darkMode ? '☀️' : '🌙'}</span>
-              </button>
+              
             </div>
 
             {/* Page content */}
