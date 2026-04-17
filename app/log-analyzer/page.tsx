@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import pako from 'pako'
+import { FixedSizeList as List } from 'react-window'
 
 interface LogEntry {
   line: number
@@ -28,6 +29,44 @@ export default function LogAnalyzer() {
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
   const MAX_SHARE_SIZE = 500 * 1024 // 500KB for compressed sharing
+  const VIRTUAL_SCROLL_THRESHOLD = 100 // Use virtual scrolling when results > 100
+
+  // Render single log entry
+  const renderLogEntry = (entry: LogEntry, idx: number) => (
+    <div key={idx} className="bg-white rounded border border-warm-300/60 p-3 relative group mb-3">
+      <button
+        onClick={() => copyEntry(entry)}
+        className="absolute top-2 right-2 p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+        title="Copy to clipboard"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      </button>
+      <div className="flex items-start gap-2 mb-2">
+        <span className={`px-2 py-1 rounded text-xs font-bold ${
+          entry.level === 'ERROR' ? 'bg-red-100 text-red-700' :
+          entry.level === 'WARN' ? 'bg-orange-100 text-orange-700' :
+          entry.level === 'INFO' ? 'bg-blue-100 text-blue-700' :
+          entry.level === 'DEBUG' ? 'bg-gray-100 text-gray-700' :
+          'bg-gray-50 text-gray-600'
+        }`}>
+          {entry.level}
+        </span>
+        <span className="text-xs text-warm-600 font-mono font-bold">{utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp}</span>
+        <span className="text-xs text-warm-500 ml-auto">Line {entry.line}</span>
+      </div>
+      <div className="text-sm font-mono text-warm-800 mb-2">{entry.message}</div>
+      {entry.stackTrace && entry.stackTrace.length > 0 && (
+        <details className="text-xs font-mono text-warm-600">
+          <summary className="cursor-pointer hover:text-primary">Stack trace ({entry.stackTrace.length} lines)</summary>
+          <pre className="mt-2 p-2 bg-warm-100 rounded overflow-x-auto">
+            {entry.stackTrace.join('\n')}
+          </pre>
+        </details>
+      )}
+    </div>
+  )
 
   // Load shared data from URL on mount
   useEffect(() => {
@@ -665,43 +704,24 @@ export default function LogAnalyzer() {
               <div className="h-full flex items-center justify-center text-warm-400">
                 <p className="text-sm font-serif">No logs to display</p>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {results.map((entry, idx) => (
-                  <div key={idx} className="bg-white rounded border border-warm-300/60 p-3 relative group">
-                    <button
-                      onClick={() => copyEntry(entry)}
-                      className="absolute top-2 right-2 p-1.5 rounded hover:bg-warm-100 text-warm-600 hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Copy to clipboard"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button>
-                    <div className="flex items-start gap-2 mb-2">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        entry.level === 'ERROR' ? 'bg-red-100 text-red-700' :
-                        entry.level === 'WARN' ? 'bg-orange-100 text-orange-700' :
-                        entry.level === 'INFO' ? 'bg-blue-100 text-blue-700' :
-                        entry.level === 'DEBUG' ? 'bg-gray-100 text-gray-700' :
-                        'bg-gray-50 text-gray-600'
-                      }`}>
-                        {entry.level}
-                      </span>
-                      <span className="text-xs text-warm-600 font-mono font-bold">{utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp}</span>
-                      <span className="text-xs text-warm-500 ml-auto">Line {entry.line}</span>
-                    </div>
-                    <div className="text-sm font-mono text-warm-800 mb-2">{entry.message}</div>
-                    {entry.stackTrace && entry.stackTrace.length > 0 && (
-                      <details className="text-xs font-mono text-warm-600">
-                        <summary className="cursor-pointer hover:text-primary">Stack trace ({entry.stackTrace.length} lines)</summary>
-                        <pre className="mt-2 p-2 bg-warm-100 rounded overflow-x-auto">
-                          {entry.stackTrace.join('\n')}
-                        </pre>
-                      </details>
-                    )}
+            ) : results.length > VIRTUAL_SCROLL_THRESHOLD ? (
+              // Virtual scrolling for large results
+              <List
+                height={600}
+                itemCount={results.length}
+                itemSize={150}
+                width="100%"
+              >
+                {({ index, style }) => (
+                  <div style={style}>
+                    {renderLogEntry(results[index], index)}
                   </div>
-                ))}
+                )}
+              </List>
+            ) : (
+              // Normal rendering for small results
+              <div className="space-y-3">
+                {results.map((entry, idx) => renderLogEntry(entry, idx))}
               </div>
             )}
           </div>
