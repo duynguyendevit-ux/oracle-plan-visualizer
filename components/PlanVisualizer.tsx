@@ -21,6 +21,20 @@ interface Props {
 type LayoutDirection = 'TB' | 'LR'
 type NodeStyle = 'detailed' | 'simple'
 
+const carbon = {
+  background: '#f4f4f4',
+  layer: '#ffffff',
+  layerAccent: '#e0e0e0',
+  textPrimary: '#161616',
+  textSecondary: '#525252',
+  borderSubtle: '#c6c6c6',
+  interactive: '#0f62fe',
+  success: '#24a148',
+  danger: '#da1e28',
+  warning: '#f1c21b',
+  cyan: '#1192e8',
+}
+
 export default function PlanVisualizer({ plan }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -161,8 +175,8 @@ export default function PlanVisualizer({ plan }: Props) {
       .append('path')
       .attr('class', 'link')
       .attr('fill', 'none')
-      .attr('stroke', '#999')
-      .attr('stroke-width', 2)
+      .attr('stroke', carbon.borderSubtle)
+      .attr('stroke-width', 1.5)
       .attr('d', linkGenerator)
       .attr('marker-end', 'url(#arrowhead)')
 
@@ -177,7 +191,7 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#999')
+      .attr('fill', carbon.borderSubtle)
 
     // Draw nodes
     const node = g.selectAll('.node')
@@ -191,18 +205,18 @@ export default function PlanVisualizer({ plan }: Props) {
     node.append('circle')
       .attr('r', nodeStyle === 'simple' ? 8 : 6)
       .attr('fill', d => {
-        if (nodeStyle === 'simple') return '#fff'
+        if (nodeStyle === 'simple') return carbon.layer
         const type = getNodeType(d)
         switch(type) {
-          case 'active': return '#90EE90'
-          case 'dead': return '#FFB6C1'
-          case 'issue': return '#FF6B6B'
-          case 'index': return '#87CEEB'
-          default: return '#fff'
+          case 'active': return carbon.success
+          case 'dead': return carbon.warning
+          case 'issue': return carbon.danger
+          case 'index': return carbon.cyan
+          default: return carbon.layer
         }
       })
-      .attr('stroke', '#333')
-      .attr('stroke-width', 2)
+      .attr('stroke', carbon.textPrimary)
+      .attr('stroke-width', 1.5)
       .style('cursor', 'pointer')
       .append('title')
       .text(d => {
@@ -223,7 +237,8 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('x', d => d.children ? -10 : 10)
       .style('text-anchor', d => d.children ? 'end' : 'start')
       .style('font-size', '12px')
-      .style('font-family', 'monospace')
+      .style('font-family', 'IBM Plex Mono, monospace')
+      .style('fill', carbon.textPrimary)
       .each(function(d) {
         const text = d3.select(this)
         const lines = []
@@ -348,7 +363,7 @@ export default function PlanVisualizer({ plan }: Props) {
         canvas.width = svgRef.current!.clientWidth
         canvas.height = svgRef.current!.clientHeight
         const ctx = canvas.getContext('2d')!
-        ctx.fillStyle = '#fef7ff'
+        ctx.fillStyle = carbon.background
         ctx.fillRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(img, 0, 0)
         
@@ -384,22 +399,22 @@ export default function PlanVisualizer({ plan }: Props) {
         <div style={{
           display: 'flex',
           gap: '8px',
-          background: 'rgba(255, 255, 255, 0.9)',
+          background: carbon.layer,
           padding: '8px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          border: `1px solid ${carbon.borderSubtle}`,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.12)'
         }}>
           <button
             onClick={() => setDirection('TB')}
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: direction === 'TB' ? '#094cb2' : '#e8e1e8',
-              color: direction === 'TB' ? 'white' : '#1d1b20',
+              background: direction === 'TB' ? carbon.interactive : carbon.layerAccent,
+              color: direction === 'TB' ? 'white' : carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -410,12 +425,12 @@ export default function PlanVisualizer({ plan }: Props) {
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: direction === 'LR' ? '#094cb2' : '#e8e1e8',
-              color: direction === 'LR' ? 'white' : '#1d1b20',
+              background: direction === 'LR' ? carbon.interactive : carbon.layerAccent,
+              color: direction === 'LR' ? 'white' : carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -427,22 +442,22 @@ export default function PlanVisualizer({ plan }: Props) {
         <div style={{
           display: 'flex',
           gap: '8px',
-          background: 'rgba(255, 255, 255, 0.9)',
+          background: carbon.layer,
           padding: '8px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          border: `1px solid ${carbon.borderSubtle}`,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.12)'
         }}>
           <button
             onClick={() => setNodeStyle('detailed')}
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: nodeStyle === 'detailed' ? '#094cb2' : '#e8e1e8',
-              color: nodeStyle === 'detailed' ? 'white' : '#1d1b20',
+              background: nodeStyle === 'detailed' ? carbon.interactive : carbon.layerAccent,
+              color: nodeStyle === 'detailed' ? 'white' : carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -453,12 +468,12 @@ export default function PlanVisualizer({ plan }: Props) {
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: nodeStyle === 'simple' ? '#094cb2' : '#e8e1e8',
-              color: nodeStyle === 'simple' ? 'white' : '#1d1b20',
+              background: nodeStyle === 'simple' ? carbon.interactive : carbon.layerAccent,
+              color: nodeStyle === 'simple' ? 'white' : carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -470,21 +485,21 @@ export default function PlanVisualizer({ plan }: Props) {
         <div style={{
           display: 'flex',
           gap: '8px',
-          background: 'rgba(255, 255, 255, 0.9)',
+          background: carbon.layer,
           padding: '8px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          border: `1px solid ${carbon.borderSubtle}`,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.12)'
         }}>
           <button
             onClick={zoomToFit}
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: '#094cb2',
+              background: carbon.interactive,
               color: 'white',
               transition: 'all 0.2s'
             }}
@@ -496,12 +511,12 @@ export default function PlanVisualizer({ plan }: Props) {
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: '#e8e1e8',
-              color: '#1d1b20',
+              background: carbon.layerAccent,
+              color: carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -512,12 +527,12 @@ export default function PlanVisualizer({ plan }: Props) {
             style={{
               padding: '6px 12px',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: 0,
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: '500',
-              background: '#e8e1e8',
-              color: '#1d1b20',
+              background: carbon.layerAccent,
+              color: carbon.textPrimary,
               transition: 'all 0.2s'
             }}
           >
@@ -527,7 +542,7 @@ export default function PlanVisualizer({ plan }: Props) {
       </div>
       
       <div ref={containerRef} className="overflow-auto" style={{ width: '100%', height: '100%' }}>
-        <svg ref={svgRef} className="border rounded"></svg>
+        <svg ref={svgRef} className="border border-outline-variant bg-surface-container-lowest"></svg>
       </div>
     </div>
   )

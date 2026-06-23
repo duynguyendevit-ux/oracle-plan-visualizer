@@ -272,18 +272,19 @@ export function generateSVG(data: DiagramData, width: number = 1200, height: num
   // Add styles
   svg += `<defs>
     <style>
-      .lane { fill: #faf8f5; stroke: #e5dfd5; stroke-width: 2; }
-      .lane-header { fill: #e8dcc8; stroke: #2c2416; stroke-width: 2; }
-      .lane-text { fill: #2c2416; font-family: sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; }
-      .activity-node { fill: #e8dcc8; stroke: #2c2416; stroke-width: 2; }
-      .decision-node { fill: #d4a574; stroke: #2c2416; stroke-width: 2; }
-      .start-end-node { fill: #2c2416; stroke: #2c2416; stroke-width: 2; }
-      .node-text { fill: #2c2416; font-family: sans-serif; font-size: 13px; text-anchor: middle; }
-      .edge { stroke: #2c2416; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
-      .edge-label { fill: #6b5d4f; font-family: sans-serif; font-size: 11px; font-weight: bold; text-anchor: middle; }
+      .lane { fill: #f4f4f4; stroke: #c6c6c6; stroke-width: 2; }
+      .lane-header { fill: #e0e0e0; stroke: #161616; stroke-width: 2; }
+      .lane-text { fill: #161616; font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; }
+      .activity-node { fill: #ffffff; stroke: #161616; stroke-width: 2; }
+      .decision-node { fill: #0f62fe; stroke: #161616; stroke-width: 2; }
+      .start-end-node { fill: #161616; stroke: #161616; stroke-width: 2; }
+      .node-text { fill: #161616; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; text-anchor: middle; }
+      .decision-node + .node-text { fill: #ffffff; }
+      .edge { stroke: #161616; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .edge-label { fill: #525252; font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: bold; text-anchor: middle; }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-      <polygon points="0 0, 10 3, 0 6" fill="#2c2416" />
+      <polygon points="0 0, 10 3, 0 6" fill="#161616" />
     </marker>
   </defs>`
 

@@ -113,7 +113,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
   }
 
   return (
-    <div className="min-h-screen bg-[#faf8f5] dark:bg-[#0a0a0a]">
+    <div className="min-h-screen bg-background dark:bg-dark-surface">
       <div className="max-w-[1800px] mx-auto p-8">
         {/* Header */}
         <motion.div
@@ -121,10 +121,10 @@ Thread 2: dispatch command -> Thread 3: process command`)
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-4xl font-bold text-[#2c2416] dark:text-[#e8dcc8] mb-2 font-serif">
+          <h1 className="text-4xl font-bold text-on-surface dark:text-dark-on-surface mb-2 font-serif">
             UML Activity Diagram
           </h1>
-          <p className="text-[#6b5d4f] dark:text-[#a89985]">
+          <p className="text-on-surface-variant dark:text-dark-on-secondary-container">
             Create activity diagrams from text descriptions
           </p>
         </motion.div>
@@ -134,23 +134,23 @@ Thread 2: dispatch command -> Thread 3: process command`)
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white dark:bg-[#1a1a1a] rounded-lg p-6 shadow-sm"
+            className="bg-surface-container-low dark:bg-dark-surface-container-low rounded-lg p-6 shadow-editorial border border-outline-variant/60"
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-[#2c2416] dark:text-[#e8dcc8]">
+              <h2 className="text-xl font-semibold text-on-surface dark:text-dark-on-surface">
                 Diagram Definition
               </h2>
               <div className="flex gap-2">
                 <button
                   onClick={copyInput}
-                  className="px-3 py-2 bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors text-sm"
+                  className="px-3 py-2 bg-surface-container dark:bg-dark-surface-container text-on-surface dark:text-dark-on-surface rounded-md hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high transition-colors text-sm"
                   title="Copy definition"
                 >
                   📋 Copy
                 </button>
                 <button
                   onClick={generateDiagram}
-                  className="px-4 py-2 bg-[#d4a574] hover:bg-[#c49564] text-white rounded-md transition-colors font-medium"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-md transition-colors font-medium"
                 >
                   Generate
                 </button>
@@ -160,7 +160,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="w-full h-[600px] p-4 bg-[#faf8f5] dark:bg-[#0f0f0f] border border-[#e5dfd5] dark:border-[#2a2a2a] rounded-md font-mono text-sm text-[#2c2416] dark:text-[#e8dcc8] focus:outline-none focus:ring-2 focus:ring-[#d4a574] resize-none"
+              className="w-full h-[600px] p-4 bg-surface-container-lowest dark:bg-dark-surface-container-lowest border border-outline-variant/60 dark:border-dark-outline-variant rounded-md font-mono text-sm text-on-surface dark:text-dark-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Enter activity diagram definition..."
               spellCheck={false}
             />
@@ -173,11 +173,11 @@ Thread 2: dispatch command -> Thread 3: process command`)
             )}
 
             {/* Syntax Help */}
-            <div className="mt-4 p-4 bg-[#f5f1eb] dark:bg-[#141414] rounded-md">
-              <h3 className="text-sm font-semibold text-[#2c2416] dark:text-[#e8dcc8] mb-2">
+            <div className="mt-4 p-4 bg-surface-container dark:bg-dark-surface-container rounded-md">
+              <h3 className="text-sm font-semibold text-on-surface dark:text-dark-on-surface mb-2">
                 Syntax Guide:
               </h3>
-              <ul className="text-xs text-[#6b5d4f] dark:text-[#a89985] space-y-1 font-mono">
+              <ul className="text-xs text-on-surface-variant dark:text-dark-on-secondary-container space-y-1 font-mono">
                 <li>• <code>lane Name</code> - Define swimlane</li>
                 <li>• <code>start</code> - Start node</li>
                 <li>• <code>end</code> - End node</li>
@@ -193,17 +193,17 @@ Thread 2: dispatch command -> Thread 3: process command`)
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white dark:bg-[#1a1a1a] rounded-lg p-6 shadow-sm"
+            className="bg-surface-container-low dark:bg-dark-surface-container-low rounded-lg p-6 shadow-editorial border border-outline-variant/60"
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-[#2c2416] dark:text-[#e8dcc8]">
+              <h2 className="text-xl font-semibold text-on-surface dark:text-dark-on-surface">
                 Preview
               </h2>
               <div className="flex gap-2">
                 <button 
                   onClick={copySVG}
                   disabled={!svg}
-                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm bg-surface-container dark:bg-dark-surface-container text-on-surface dark:text-dark-on-surface rounded-md hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Copy SVG code"
                 >
                   📋 Copy SVG
@@ -211,7 +211,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
                 <button 
                   onClick={copyXML}
                   disabled={!input}
-                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm bg-surface-container dark:bg-dark-surface-container text-on-surface dark:text-dark-on-surface rounded-md hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Copy XML code"
                 >
                   📋 Copy XML
@@ -219,32 +219,32 @@ Thread 2: dispatch command -> Thread 3: process command`)
                 <button 
                   onClick={exportSVG}
                   disabled={!svg}
-                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm bg-surface-container dark:bg-dark-surface-container text-on-surface dark:text-dark-on-surface rounded-md hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Export SVG
                 </button>
                 <button 
                   onClick={exportPNG}
                   disabled={!svg}
-                  className="px-3 py-1 text-sm bg-[#f5f1eb] dark:bg-[#141414] text-[#2c2416] dark:text-[#e8dcc8] rounded-md hover:bg-[#e5dfd5] dark:hover:bg-[#1f1f1f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm bg-surface-container dark:bg-dark-surface-container text-on-surface dark:text-dark-on-surface rounded-md hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Export PNG
                 </button>
                 <button 
                   onClick={exportXML}
                   disabled={!input}
-                  className="px-3 py-1 text-sm bg-[#d4a574] dark:bg-[#d4a574] text-white rounded-md hover:bg-[#c49564] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Export XML
                 </button>
               </div>
             </div>
 
-            <div className="bg-[#faf8f5] dark:bg-[#0f0f0f] border border-[#e5dfd5] dark:border-[#2a2a2a] rounded-md p-4 min-h-[600px] overflow-auto">
+            <div className="bg-surface-container-lowest dark:bg-dark-surface-container-lowest border border-outline-variant/60 dark:border-dark-outline-variant rounded-md p-4 min-h-[600px] overflow-auto">
               {svg ? (
                 <div dangerouslySetInnerHTML={{ __html: svg }} />
               ) : (
-                <div className="flex items-center justify-center h-full text-[#6b5d4f] dark:text-[#a89985]">
+                <div className="flex items-center justify-center h-full text-on-surface-variant dark:text-dark-on-secondary-container">
                   Click "Generate" to create diagram
                 </div>
               )}
