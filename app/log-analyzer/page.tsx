@@ -371,7 +371,7 @@ export default function LogAnalyzer() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[600px] lg:h-[calc(100vh-200px)]">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(360px,0.72fr)_minmax(0,1.28fr)] xl:grid-cols-[minmax(420px,0.68fr)_minmax(0,1.32fr)] gap-4 min-h-[600px] lg:h-[calc(100vh-200px)]">
         {/* Input Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
@@ -526,7 +526,7 @@ export default function LogAnalyzer() {
               <button
                 onClick={clearAll}
                 disabled={loading || (!input && results.length === 0)}
-                className="sm:w-auto w-full px-6 bg-warm-200 text-warm-800 py-3 sm:py-2.5 rounded hover:bg-warm-300 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
+                className="sm:w-auto w-full px-6 bg-surface-container text-on-surface py-3 sm:py-2.5 rounded hover:bg-surface-container-high font-semibold transition-colors shadow-warm disabled:bg-surface-container disabled:text-on-surface-variant disabled:opacity-100 disabled:cursor-not-allowed dark:bg-dark-surface-container dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high dark:disabled:bg-dark-surface-container dark:disabled:text-dark-on-secondary-container flex items-center justify-center gap-2 active:scale-95"
                 title="Clear all data"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,7 +1,7 @@
 'use client'
 
 import './globals.css'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -18,12 +18,29 @@ export default function RootLayout({
     }
     return false
   })
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const pathname = usePathname()
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const nextTheme = savedTheme ? savedTheme === 'dark' : prefersDark
+
+    setIsDarkMode(nextTheme)
+    document.documentElement.classList.toggle('dark', nextTheme)
+  }, [])
 
   const toggleSidebarCollapsed = () => {
     const newValue = !sidebarCollapsed
     setSidebarCollapsed(newValue)
     localStorage.setItem('sidebarCollapsed', JSON.stringify(newValue))
+  }
+
+  const toggleDarkMode = () => {
+    const nextTheme = !isDarkMode
+    setIsDarkMode(nextTheme)
+    localStorage.setItem('theme', nextTheme ? 'dark' : 'light')
+    document.documentElement.classList.toggle('dark', nextTheme)
   }
 
   const navigation = [
@@ -75,7 +92,7 @@ export default function RootLayout({
   ]
 
   return (
-    <html lang="en" >
+    <html lang="en" className={isDarkMode ? 'dark' : ''} suppressHydrationWarning>
       <body>
         <div className="flex h-screen overflow-hidden">
           {/* Sidebar */}
@@ -202,8 +219,24 @@ export default function RootLayout({
                 </h2>
               </div>
               
-              {/* Dark Mode Toggle */}
-              
+              <button
+                type="button"
+                onClick={toggleDarkMode}
+                aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-pressed={isDarkMode}
+                title={isDarkMode ? 'Light mode' : 'Dark mode'}
+                className="ml-3 inline-flex h-10 w-10 items-center justify-center border border-outline-variant/60 bg-surface-container text-on-surface transition-colors hover:bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background dark:border-dark-outline-variant dark:bg-dark-surface-container dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high dark:focus:ring-offset-dark-surface"
+              >
+                {isDarkMode ? (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364 6.364-1.414-1.414M7.05 7.05 5.636 5.636m12.728 0L16.95 7.05M7.05 16.95l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                  </svg>
+                )}
+              </button>
             </div>
 
             {/* Page content */}
