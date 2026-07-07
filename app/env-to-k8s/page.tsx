@@ -141,6 +141,7 @@ function toK8sEnv(vars: EnvVar[], includeEnvKey: boolean) {
 
 export default function EnvToK8s() {
   const [input, setInput] = useState('')
+  const [output, setOutput] = useState('')
   const [includeEnvKey, setIncludeEnvKey] = useState(false)
   const [sortKeys, setSortKeys] = useState(false)
   const [clipboardError, setClipboardError] = useState('')
@@ -150,10 +151,10 @@ export default function EnvToK8s() {
     const vars = [...parsed.vars]
     return sortKeys ? vars.sort((a, b) => a.name.localeCompare(b.name)) : vars
   }, [parsed.vars, sortKeys])
-  const output = useMemo(() => toK8sEnv(envVars, includeEnvKey), [envVars, includeEnvKey])
 
   const loadSample = () => {
     setInput(sampleEnv)
+    setOutput('')
     setClipboardError('')
   }
 
@@ -161,10 +162,15 @@ export default function EnvToK8s() {
     try {
       const text = await navigator.clipboard.readText()
       setInput(text)
+      setOutput('')
       setClipboardError('')
     } catch {
       setClipboardError('Browser blocked clipboard access. Use Ctrl+V inside the input box.')
     }
+  }
+
+  const convertToYaml = () => {
+    setOutput(toK8sEnv(envVars, includeEnvKey))
   }
 
   const copyToClipboard = () => {
@@ -174,6 +180,7 @@ export default function EnvToK8s() {
 
   const clearAll = () => {
     setInput('')
+    setOutput('')
     setClipboardError('')
   }
 
@@ -237,18 +244,21 @@ export default function EnvToK8s() {
             <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Environment Variables</h3>
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={pasteFromClipboard}
                 className="px-3 py-1.5 bg-primary text-white text-sm rounded hover:bg-primary/90 font-medium transition-colors"
               >
                 Paste
               </button>
               <button
+                type="button"
                 onClick={loadSample}
                 className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
               >
                 Load Sample
               </button>
               <button
+                type="button"
                 onClick={clearAll}
                 disabled={!input}
                 className="px-3 py-1.5 bg-surface-container text-on-surface text-sm rounded hover:bg-surface-container-high font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -265,6 +275,14 @@ export default function EnvToK8s() {
               placeholder="Paste properties or YAML here, for example: spring.servlet.multipart.enabled= true"
               className="w-full h-[520px] p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
+            <button
+              type="button"
+              onClick={convertToYaml}
+              disabled={!input.trim() || parsed.errors.length > 0}
+              className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Convert to K8s YAML
+            </button>
           </div>
         </div>
 
@@ -272,6 +290,7 @@ export default function EnvToK8s() {
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
             <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Kubernetes Env YAML</h3>
             <button
+              type="button"
               onClick={copyToClipboard}
               disabled={!output}
               className="px-3 py-1.5 bg-primary text-white text-sm rounded hover:bg-primary/90 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
