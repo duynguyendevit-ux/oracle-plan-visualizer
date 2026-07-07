@@ -26,7 +26,17 @@ schedule:
             pageSize: 300
             fixedRate: 29000
             initialDelay: 10000
-            minutes-back: PT30M`
+            minutes-back: PT30M
+
+cloud:
+    stream:
+        kafka:
+            bindings:
+                elevateEventLevelConsumer-in-0:
+                    consumer:
+                        configuration:
+                            max.poll.records: 50
+                            fetch.max.wait.ms: 100`
 
 function stripInlineComment(value: string) {
   let quote: string | null = null
@@ -89,7 +99,7 @@ function parseEnv(input: string) {
       return
     }
 
-    const yamlMatch = rawLine.match(/^(\s*)([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/)
+    const yamlMatch = rawLine.match(/^(\s*)([A-Za-z_][A-Za-z0-9_.-]*):\s*(.*)$/)
 
     if (!yamlMatch) {
       errors.push(`Line ${index + 1}: expected KEY=value or YAML key: value`)
