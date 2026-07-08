@@ -278,7 +278,7 @@ export default function EnvToK8s() {
             <button
               type="button"
               onClick={convertToYaml}
-              disabled={!input.trim() || parsed.errors.length > 0}
+              disabled={!input.trim()}
               className="mt-3 w-full bg-primary text-white py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Convert to K8s YAML
