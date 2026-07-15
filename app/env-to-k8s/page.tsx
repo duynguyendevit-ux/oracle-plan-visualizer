@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
 
 interface EnvVar {
   name: string
@@ -73,12 +73,48 @@ function toEnvName(key: string) {
   return key.trim().replace(/[.-]+/g, '_').toUpperCase()
 }
 
+function normalizeYamlLines(input: string) {
+  const lines = input.split('\n').map((line) => line.replace(/\t/g, '    '))
+  const significantLines = lines
+    .map((line, index) => ({
+      index,
+      indent: line.match(/^\s*/)?.[0].length ?? 0,
+      content: line.trim(),
+    }))
+    .filter((line) => line.content && !line.content.startsWith('#'))
+
+  if (significantLines.length < 3) return lines
+
+  const [firstLine, secondLine] = significantLines
+  const positiveIndents = significantLines
+    .map((line) => line.indent)
+    .filter((indent) => indent > 0)
+  const indentSize = positiveIndents.length > 0 ? Math.min(...positiveIndents) : 0
+  const firstIsYamlContainer = /^[A-Za-z_][A-Za-z0-9_.-]*:\s*$/.test(firstLine.content)
+  const hasSiblingAtBaseIndent = significantLines
+    .slice(2)
+    .some((line) => line.indent === indentSize)
+
+  // Copying a YAML fragment often strips indentation from only its first line.
+  if (
+    firstIsYamlContainer &&
+    firstLine.indent === 0 &&
+    indentSize > 0 &&
+    secondLine.indent >= indentSize * 2 &&
+    hasSiblingAtBaseIndent
+  ) {
+    lines[firstLine.index] = `${' '.repeat(indentSize)}${lines[firstLine.index]}`
+  }
+
+  return lines
+}
+
 function parseEnv(input: string) {
   const vars: EnvVar[] = []
   const errors: string[] = []
   const yamlStack: Array<{ indent: number; key: string }> = []
 
-  input.split('\n').forEach((rawLine, index) => {
+  normalizeYamlLines(input).forEach((rawLine, index) => {
     const line = rawLine.trim()
 
     if (!line || line.startsWith('#')) return
@@ -139,7 +175,30 @@ function toK8sEnv(vars: EnvVar[], includeEnvKey: boolean) {
   return includeEnvKey ? `env:\n${body}` : body
 }
 
+function getCurrentLineRemoval(value: string, cursor: number) {
+  const lineStart = value.lastIndexOf('\n', Math.max(cursor - 1, 0)) + 1
+  const nextLineBreak = value.indexOf('\n', cursor)
+  const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak
+  const lineText = value.slice(lineStart, lineEnd)
+
+  if (nextLineBreak !== -1) {
+    return {
+      lineText,
+      value: `${value.slice(0, lineStart)}${value.slice(nextLineBreak + 1)}`,
+      cursor: lineStart,
+    }
+  }
+
+  const removalStart = lineStart > 0 ? lineStart - 1 : lineStart
+  return {
+    lineText,
+    value: `${value.slice(0, removalStart)}${value.slice(lineEnd)}`,
+    cursor: removalStart,
+  }
+}
+
 export default function EnvToK8s() {
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [includeEnvKey, setIncludeEnvKey] = useState(false)
@@ -182,6 +241,46 @@ export default function EnvToK8s() {
     setInput('')
     setOutput('')
     setClipboardError('')
+  }
+
+  const removeCurrentLine = (cursor: number) => {
+    const removal = getCurrentLineRemoval(input, cursor)
+    setInput(removal.value)
+    setOutput('')
+    setClipboardError('')
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(removal.cursor, removal.cursor)
+    })
+
+    return removal
+  }
+
+  const handleEditorKeyDown = async (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+
+    const key = event.key.toLowerCase()
+    const hasSelection = event.currentTarget.selectionStart !== event.currentTarget.selectionEnd
+
+    if (key === 'k') {
+      event.preventDefault()
+      removeCurrentLine(event.currentTarget.selectionStart)
+      return
+    }
+
+    if (key === 'x' && !hasSelection) {
+      event.preventDefault()
+      const cursor = event.currentTarget.selectionStart
+      const removal = getCurrentLineRemoval(input, cursor)
+
+      try {
+        await navigator.clipboard.writeText(`${removal.lineText}\n`)
+        removeCurrentLine(cursor)
+      } catch {
+        setClipboardError('Browser blocked clipboard access. Select text before using Ctrl+X.')
+      }
+    }
   }
 
   return (
@@ -270,8 +369,13 @@ export default function EnvToK8s() {
 
           <div className="p-4">
             <textarea
+              ref={inputRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value)
+                setOutput('')
+              }}
+              onKeyDown={handleEditorKeyDown}
               placeholder="Paste properties or YAML here, for example: spring.servlet.multipart.enabled= true"
               className="w-full h-[520px] p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
