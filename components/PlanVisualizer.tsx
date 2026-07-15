@@ -33,6 +33,31 @@ const carbon = {
   danger: 'var(--cds-danger)',
   warning: 'var(--cds-warning)',
   cyan: '#1192e8',
+  highestCost: '#ff832b',
+}
+
+function isDeadNode(node: PlanNode) {
+  return node.filterPredicates?.includes('NULL IS NOT NULL') ?? false
+}
+
+function getHighestCostPath(node: PlanNode): { totalCost: number; nodes: PlanNode[] } {
+  const nodeCost = Number.isFinite(node.cost) ? node.cost ?? 0 : 0
+  const childPaths = (node.children ?? [])
+    .filter((child) => !isDeadNode(child))
+    .map(getHighestCostPath)
+
+  if (childPaths.length === 0) {
+    return { totalCost: nodeCost, nodes: [node] }
+  }
+
+  const highestChildPath = childPaths.reduce((highest, current) =>
+    current.totalCost > highest.totalCost ? current : highest
+  )
+
+  return {
+    totalCost: nodeCost + highestChildPath.totalCost,
+    nodes: [node, ...highestChildPath.nodes],
+  }
 }
 
 function getCssColor(name: string, fallback: string) {
@@ -162,6 +187,10 @@ export default function PlanVisualizer({ plan }: Props) {
       .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.5))
 
     const positionedRoot = treeLayout(root)
+    const highestCostPath = getHighestCostPath(plan)
+    const highestCostNodes = new Set(highestCostPath.nodes)
+    const isHighestCostLink = (link: d3.HierarchyPointLink<PlanNode>) =>
+      highestCostNodes.has(link.source.data) && highestCostNodes.has(link.target.data)
 
     // Determine node type for coloring
     const getNodeType = (node: d3.HierarchyNode<PlanNode>) => {
@@ -203,11 +232,12 @@ export default function PlanVisualizer({ plan }: Props) {
       .enter()
       .append('path')
       .attr('class', 'link')
+      .attr('data-highest-cost', (d) => isHighestCostLink(d) ? 'true' : 'false')
       .attr('fill', 'none')
-      .attr('stroke', carbon.borderSubtle)
-      .attr('stroke-width', 1.5)
+      .attr('stroke', (d) => isHighestCostLink(d) ? carbon.highestCost : carbon.borderSubtle)
+      .attr('stroke-width', (d) => isHighestCostLink(d) ? 3 : 1.5)
       .attr('d', linkGenerator)
-      .attr('marker-end', 'url(#arrowhead)')
+      .attr('marker-end', (d) => isHighestCostLink(d) ? 'url(#arrowhead-high-cost)' : 'url(#arrowhead)')
 
     // Add arrowhead marker
     svg.append('defs').append('marker')
@@ -222,12 +252,25 @@ export default function PlanVisualizer({ plan }: Props) {
       .attr('d', 'M0,-5L10,0L0,5')
       .attr('fill', carbon.borderSubtle)
 
+    svg.select('defs').append('marker')
+      .attr('id', 'arrowhead-high-cost')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 8)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', carbon.highestCost)
+
     // Draw nodes
     const node = g.selectAll('.node')
       .data(positionedRoot.descendants())
       .enter()
       .append('g')
       .attr('class', 'node')
+      .attr('data-highest-cost', (d) => highestCostNodes.has(d.data) ? 'true' : 'false')
       .attr('transform', d => isHorizontal ? `translate(${d.y},${d.x})` : `translate(${d.x},${d.y})`)
 
     // Node circles
@@ -244,8 +287,8 @@ export default function PlanVisualizer({ plan }: Props) {
           default: return carbon.layer
         }
       })
-      .attr('stroke', carbon.textPrimary)
-      .attr('stroke-width', 1.5)
+      .attr('stroke', (d) => highestCostNodes.has(d.data) ? carbon.highestCost : carbon.textPrimary)
+      .attr('stroke-width', (d) => highestCostNodes.has(d.data) ? 3 : 1.5)
       .style('cursor', 'pointer')
       .append('title')
       .text(d => {
@@ -257,6 +300,7 @@ export default function PlanVisualizer({ plan }: Props) {
         if (d.data.cardinality) lines.push(`Rows: ${d.data.cardinality}`)
         if (d.data.cpuCost) lines.push(`CPU Cost: ${d.data.cpuCost}`)
         if (d.data.filterPredicates) lines.push(`Filter: ${d.data.filterPredicates}`)
+        if (highestCostNodes.has(d.data)) lines.push(`Highest-cost path total: ${highestCostPath.totalCost}`)
         return lines.join('\n')
       })
 
@@ -268,6 +312,7 @@ export default function PlanVisualizer({ plan }: Props) {
       .style('font-size', '12px')
       .style('font-family', 'IBM Plex Mono, monospace')
       .style('fill', carbon.textPrimary)
+      .style('font-weight', (d) => highestCostNodes.has(d.data) ? '600' : '400')
       .each(function(d) {
         const text = d3.select(this)
         const lines = []

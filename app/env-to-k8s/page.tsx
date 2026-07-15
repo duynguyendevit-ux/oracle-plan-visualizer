@@ -1,11 +1,21 @@
 'use client'
 
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 interface EnvVar {
   name: string
   value: string
 }
+
+interface SavedEnvToK8sState {
+  input: string
+  output: string
+  prefix: string
+  includeEnvKey: boolean
+  sortKeys: boolean
+}
+
+const storageKey = 'env-to-k8s-state-v1'
 
 const sampleEnv = `server.port=8082
 server.tomcat.connection-timeout=10s
@@ -166,10 +176,21 @@ function quoteYaml(value: string) {
   return `'${value.replace(/'/g, "''")}'`
 }
 
-function toK8sEnv(vars: EnvVar[], includeEnvKey: boolean) {
+function normalizePrefix(prefix: string) {
+  const normalized = prefix
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase()
+
+  return normalized ? `${normalized}_` : ''
+}
+
+function toK8sEnv(vars: EnvVar[], includeEnvKey: boolean, prefix: string) {
   const indent = includeEnvKey ? '  ' : '            '
+  const normalizedPrefix = normalizePrefix(prefix)
   const body = vars
-    .map((item) => `${indent}- name: ${item.name}\n${indent}  value: ${quoteYaml(item.value)}`)
+    .map((item) => `${indent}- name: ${normalizedPrefix}${item.name}\n${indent}  value: ${quoteYaml(item.value)}`)
     .join('\n')
 
   return includeEnvKey ? `env:\n${body}` : body
@@ -201,9 +222,42 @@ export default function EnvToK8s() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
+  const [prefix, setPrefix] = useState('')
   const [includeEnvKey, setIncludeEnvKey] = useState(false)
   const [sortKeys, setSortKeys] = useState(false)
   const [clipboardError, setClipboardError] = useState('')
+  const [isRestored, setIsRestored] = useState(false)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (!saved) return
+
+      const state = JSON.parse(saved) as Partial<SavedEnvToK8sState>
+      if (typeof state.input === 'string') setInput(state.input)
+      if (typeof state.output === 'string') setOutput(state.output)
+      if (typeof state.prefix === 'string') setPrefix(state.prefix)
+      if (typeof state.includeEnvKey === 'boolean') setIncludeEnvKey(state.includeEnvKey)
+      if (typeof state.sortKeys === 'boolean') setSortKeys(state.sortKeys)
+    } catch {
+      localStorage.removeItem(storageKey)
+    } finally {
+      setIsRestored(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isRestored) return
+
+    const state: SavedEnvToK8sState = {
+      input,
+      output,
+      prefix,
+      includeEnvKey,
+      sortKeys,
+    }
+    localStorage.setItem(storageKey, JSON.stringify(state))
+  }, [includeEnvKey, input, isRestored, output, prefix, sortKeys])
 
   const parsed = useMemo(() => parseEnv(input), [input])
   const envVars = useMemo(() => {
@@ -229,7 +283,7 @@ export default function EnvToK8s() {
   }
 
   const convertToYaml = () => {
-    setOutput(toK8sEnv(envVars, includeEnvKey))
+    setOutput(toK8sEnv(envVars, includeEnvKey, prefix))
   }
 
   const copyToClipboard = () => {
@@ -285,7 +339,7 @@ export default function EnvToK8s() {
 
   return (
     <div className="p-4 max-w-full mx-auto">
-      <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="mb-4 grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
           <div className="text-xs font-medium text-warm-600 uppercase tracking-wide mb-1">Variables</div>
           <div className="text-2xl font-serif font-semibold text-warm-800">{envVars.length}</div>
@@ -311,6 +365,20 @@ export default function EnvToK8s() {
             className="w-4 h-4 rounded border-warm-300 text-primary focus:ring-primary"
           />
           <span className="text-sm font-medium text-warm-800">Sort keys</span>
+        </label>
+        <label className="col-span-2 bg-warm-50 rounded-lg p-4 shadow-warm border border-warm-300/60">
+          <span className="block text-xs font-medium text-warm-600 uppercase tracking-wide mb-2">Prefix</span>
+          <input
+            type="text"
+            value={prefix}
+            onChange={(event) => {
+              setPrefix(event.target.value)
+              setOutput('')
+            }}
+            placeholder="SCHEDULE_"
+            aria-label="Environment variable prefix"
+            className="w-full h-9 px-3 border border-warm-300/60 rounded bg-white font-mono text-sm text-warm-800 placeholder-warm-400"
+          />
         </label>
       </div>
 

@@ -198,12 +198,12 @@ export default function Home() {
 
       {/* Visualization Panel */}
       <div className="bg-surface-container-low rounded-lg shadow-editorial overflow-hidden">
-        <div className="bg-surface-container px-4 py-3 flex justify-between items-center">
+        <div className="bg-surface-container px-4 py-3 flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
           <h3 className="text-sm font-label font-semibold text-on-surface uppercase tracking-wide">Execution Tree</h3>
           
           {/* Legend */}
           {parsedPlan && (
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 lg:justify-end">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-600 border border-on-surface rounded-full"></div>
                 <span className="text-xs font-label text-on-surface-variant">Active Branch</span>
@@ -219,6 +219,10 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-cyan-600 border border-on-surface rounded-full"></div>
                 <span className="text-xs font-label text-on-surface-variant">Index Scan</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-1 bg-orange-500"></div>
+                <span className="text-xs font-label text-on-surface-variant">Highest Cost Path</span>
               </div>
             </div>
           )}
