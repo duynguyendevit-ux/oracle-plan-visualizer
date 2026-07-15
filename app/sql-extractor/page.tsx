@@ -100,6 +100,7 @@ export default function SQLExtractor() {
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -179,8 +180,7 @@ export default function SQLExtractor() {
     }
   }, [output])
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const readFile = useCallback((file: File) => {
     if (!file) return
 
     if (file.size > 50 * 1024 * 1024) {
@@ -214,6 +214,34 @@ export default function SQLExtractor() {
 
     reader.readAsText(file)
   }, [])
+
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    readFile(file)
+    e.target.value = ''
+  }, [readFile])
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+
+    readFile(file)
+  }, [readFile])
 
   const copyToClipboard = useCallback(() => {
     navigator.clipboard.writeText(output)
@@ -301,6 +329,59 @@ export default function SQLExtractor() {
           </div>
           
           <div className="p-4">
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-on-surface mb-2">
+                Upload Source File (Max 50MB)
+              </label>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
+                  isDragging
+                    ? 'border-primary bg-primary/5 scale-[1.02]'
+                    : 'border-outline-variant/60 hover:border-primary hover:bg-surface-container'
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".txt,.log,.sql"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={isProcessing}
+                />
+
+                <div className="pointer-events-none">
+                  <svg
+                    className={`mx-auto h-12 w-12 mb-3 transition-colors ${
+                      isDragging ? 'text-primary' : 'text-on-surface-variant'
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+
+                  <p className={`text-sm font-medium mb-1 ${
+                    isDragging ? 'text-primary' : 'text-on-surface'
+                  }`}>
+                    {isDragging ? 'Drop file here' : 'Drag & drop your SQL/log file here'}
+                  </p>
+
+                  <p className="text-xs text-on-surface-variant">
+                    or click to browse • .sql, .log, .txt • Max 50MB
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
