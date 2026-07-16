@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import {
   flattenPlan,
   getBottlenecks,
-  getHighestCostPathIds,
+  getCriticalPathIds,
+  getMetricLabel,
+  getMetricValue,
   isDeadNode,
   type PlanEntry,
+  type PlanMetric,
   type PlanNode,
 } from '@/lib/execution-plan'
 
@@ -105,8 +108,8 @@ function isLargeMisestimate(entry: PlanEntry) {
   return ratio !== undefined && (ratio >= 10 || ratio <= 0.1)
 }
 
-function heatColor(cost: number | undefined, maxCost: number) {
-  const ratio = maxCost > 0 ? (cost ?? 0) / maxCost : 0
+function heatColor(value: number, maxValue: number) {
+  const ratio = maxValue > 0 ? value / maxValue : 0
   if (ratio >= 0.75) return '#ff8389'
   if (ratio >= 0.5) return '#ff832b'
   if (ratio >= 0.25) return '#f1c21b'
@@ -128,6 +131,7 @@ function recommendations(entry: PlanEntry, bottleneckIds: Set<string>) {
 
 export default function PlanVisualizer({ plan, comparison }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const minimapRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
   const currentTransformRef = useRef(d3.zoomIdentity)
@@ -135,6 +139,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
     plan: PlanNode
     direction: LayoutDirection
     nodeStyle: NodeStyle
+    metric: PlanMetric
     width: number
     height: number
   } | null>(null)
@@ -144,6 +149,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
   const [direction, setDirection] = useState<LayoutDirection>('TB')
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('detailed')
   const [nodeFilter, setNodeFilter] = useState<NodeFilter>('all')
+  const [metric, setMetric] = useState<PlanMetric>('cost')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(-1)
   const [heatmapEnabled, setHeatmapEnabled] = useState(true)
@@ -155,8 +161,8 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
   const entries = useMemo(() => flattenPlan(plan), [plan])
   const entryById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
   const idByNode = useMemo(() => new Map(entries.map((entry) => [entry.node, entry.id])), [entries])
-  const highestCostIds = useMemo(() => new Set(getHighestCostPathIds(plan)), [plan])
-  const bottlenecks = useMemo(() => getBottlenecks(plan, 10), [plan])
+  const highestCostIds = useMemo(() => new Set(getCriticalPathIds(plan, metric)), [metric, plan])
+  const bottlenecks = useMemo(() => getBottlenecks(plan, 10, metric), [metric, plan])
   const bottleneckIds = useMemo(() => new Set(bottlenecks.map((entry) => entry.id)), [bottlenecks])
   const collapsibleIds = useMemo(
     () => entries.filter((entry) => (entry.node.children?.length ?? 0) > 0).map((entry) => entry.id),
@@ -164,8 +170,18 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
   )
   const addedIds = useMemo(() => new Set(comparison?.addedIds ?? []), [comparison?.addedIds])
   const changedIds = useMemo(() => new Set(comparison?.changedIds ?? []), [comparison?.changedIds])
-  const maxCost = useMemo(() => Math.max(0, ...entries.map((entry) => entry.node.cost ?? 0)), [entries])
+  const maxMetricValue = useMemo(() => Math.max(0, ...entries.map((entry) => getMetricValue(entry.node, metric))), [entries, metric])
   const selectedEntry = entryById.get(selectedNodeId) ?? entries[0]
+  const breadcrumbEntries = useMemo(() => {
+    if (!selectedEntry) return []
+    const result: PlanEntry[] = []
+    let current: PlanEntry | undefined = selectedEntry
+    while (current) {
+      result.unshift(current)
+      current = current.parentId ? entryById.get(current.parentId) : undefined
+    }
+    return result
+  }, [entryById, selectedEntry])
 
   const matchingEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -216,7 +232,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
     return () => observer.disconnect()
   }, [])
 
-  const applyFocus = (id: string) => {
+  const applyFocus = useCallback((id: string) => {
     const position = positionsRef.current.get(id)
     const svgElement = svgRef.current
     if (!position || !svgElement || !zoomRef.current) return false
@@ -228,7 +244,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       .scale(scale)
     d3.select(svgElement).transition().duration(450).call(zoomRef.current.transform, transform)
     return true
-  }
+  }, [dimensions.height, dimensions.width])
 
   const focusNode = (id: string) => {
     setSelectedNodeId(id)
@@ -260,6 +276,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       && previousLayout.plan === plan
       && previousLayout.direction === direction
       && previousLayout.nodeStyle === nodeStyle
+      && previousLayout.metric === metric
       && previousLayout.width === dimensions.width
       && previousLayout.height === dimensions.height
     const previousScrollLeft = containerRef.current?.scrollLeft ?? 0
@@ -275,11 +292,13 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       .attr('height', containerHeight)
       .style('cursor', 'grab')
     const g = svg.append('g')
+    let updateMinimapViewport: (transform: d3.ZoomTransform) => void = () => {}
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
       .on('zoom', (event) => {
         currentTransformRef.current = event.transform
         g.attr('transform', event.transform)
+        updateMinimapViewport(event.transform)
       })
     zoomRef.current = zoom
     svg.call(zoom)
@@ -396,7 +415,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       .attr('class', 'heat-ring')
       .attr('r', 16)
       .attr('fill', 'none')
-      .attr('stroke', (item) => heatColor(item.data.cost, maxCost))
+      .attr('stroke', (item) => heatColor(getMetricValue(item.data, metric), maxMetricValue))
       .attr('stroke-width', 3)
       .attr('opacity', 0)
 
@@ -481,8 +500,8 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
         const lines = [label]
         if (item.data.objectName) lines.push(item.data.objectName)
         if (nodeStyle === 'detailed') {
-          let metrics = item.data.cost !== undefined ? `Cost ${formatNumber(item.data.cost)}` : ''
-          if (entry.estimatedRows !== undefined) metrics += `${metrics ? ' | ' : ''}Rows ${formatNumber(entry.estimatedRows)}`
+          let metrics = `${getMetricLabel(metric)} ${formatNumber(getMetricValue(item.data, metric))}`
+          if (metric !== 'rows' && entry.estimatedRows !== undefined) metrics += ` | Rows ${formatNumber(entry.estimatedRows)}`
           if (entry.actualRows !== undefined) metrics += ` -> ${formatNumber(entry.actualRows)} (${formatRatio(entry.misestimateRatio)})`
           if (metrics) lines.push(metrics)
         }
@@ -496,6 +515,63 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       })
 
     const bounds = g.node()?.getBBox()
+    if (bounds && minimapRef.current) {
+      const minimapWidth = 180
+      const minimapHeight = 112
+      const minimapPadding = 6
+      const minimap = d3.select(minimapRef.current)
+        .attr('width', minimapWidth)
+        .attr('height', minimapHeight)
+      minimap.selectAll('*').remove()
+      const minimapScale = Math.min(
+        (minimapWidth - minimapPadding * 2) / Math.max(bounds.width, 1),
+        (minimapHeight - minimapPadding * 2) / Math.max(bounds.height, 1)
+      )
+      const minimapOffsetX = (minimapWidth - bounds.width * minimapScale) / 2 - bounds.x * minimapScale
+      const minimapOffsetY = (minimapHeight - bounds.height * minimapScale) / 2 - bounds.y * minimapScale
+      const minimapGroup = minimap.append('g')
+        .attr('transform', `translate(${minimapOffsetX},${minimapOffsetY}) scale(${minimapScale})`)
+      minimapGroup.selectAll('.minimap-link')
+        .data(positionedRoot.links())
+        .enter()
+        .append('path')
+        .attr('fill', 'none')
+        .attr('stroke', colors.borderSubtle)
+        .attr('stroke-width', 1 / minimapScale)
+        .attr('d', linkGenerator)
+      minimapGroup.selectAll('.minimap-node')
+        .data(positionedRoot.descendants())
+        .enter()
+        .append('circle')
+        .attr('cx', (item) => isHorizontal ? item.y : item.x)
+        .attr('cy', (item) => isHorizontal ? item.x : item.y)
+        .attr('r', 2.5 / minimapScale)
+        .attr('fill', (item) => heatColor(getMetricValue(item.data, metric), maxMetricValue))
+      const viewport = minimap.append('rect')
+        .attr('fill', 'none')
+        .attr('stroke', colors.interactive)
+        .attr('stroke-width', 1.5)
+        .attr('pointer-events', 'none')
+      updateMinimapViewport = (transform) => {
+        const visibleX = -transform.x / transform.k
+        const visibleY = -transform.y / transform.k
+        viewport
+          .attr('x', minimapOffsetX + visibleX * minimapScale)
+          .attr('y', minimapOffsetY + visibleY * minimapScale)
+          .attr('width', Math.min(minimapWidth, containerWidth / transform.k * minimapScale))
+          .attr('height', Math.min(minimapHeight, containerHeight / transform.k * minimapScale))
+      }
+      minimap.on('click', (event) => {
+        const [pointerX, pointerY] = d3.pointer(event)
+        const contentX = (pointerX - minimapOffsetX) / minimapScale
+        const contentY = (pointerY - minimapOffsetY) / minimapScale
+        const scale = currentTransformRef.current.k
+        svg.transition().duration(300).call(
+          zoom.transform,
+          d3.zoomIdentity.translate(containerWidth / 2 - contentX * scale, containerHeight / 2 - contentY * scale).scale(scale)
+        )
+      })
+    }
     const initialTransform = bounds
       ? getBoundsTransform(bounds, containerWidth, containerHeight)
       : getTreeTransform(positionedRoot, isHorizontal, containerWidth, containerHeight)
@@ -532,6 +608,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       plan,
       direction,
       nodeStyle,
+      metric,
       width: dimensions.width,
       height: dimensions.height,
     }
@@ -542,9 +619,11 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
     entryById,
     highestCostIds,
     idByNode,
-    maxCost,
+    maxMetricValue,
+    metric,
     nodeStyle,
     plan,
+    applyFocus,
   ])
 
   useEffect(() => {
@@ -652,8 +731,8 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
               aria-label="Search execution plan"
               className="h-9 min-w-0 flex-1 px-3 text-sm"
             />
-            <button type="button" onClick={() => focusSearchResult(-1)} disabled={matchingEntries.length === 0} title="Previous result" className="h-9 w-9 border border-l-0 border-outline-variant bg-surface-container-low text-on-surface disabled:opacity-40">‹</button>
-            <button type="button" onClick={() => focusSearchResult(1)} disabled={matchingEntries.length === 0} title="Next result" className="h-9 w-9 border border-l-0 border-outline-variant bg-surface-container-low text-on-surface disabled:opacity-40">›</button>
+            <button type="button" onClick={() => focusSearchResult(-1)} disabled={matchingEntries.length === 0} title="Previous result" aria-label="Previous search result" className="h-9 w-9 border border-l-0 border-outline-variant bg-surface-container-low text-on-surface disabled:opacity-40">‹</button>
+            <button type="button" onClick={() => focusSearchResult(1)} disabled={matchingEntries.length === 0} title="Next result" aria-label="Next search result" className="h-9 w-9 border border-l-0 border-outline-variant bg-surface-container-low text-on-surface disabled:opacity-40">›</button>
           </div>
         </label>
 
@@ -669,6 +748,17 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
           </select>
         </label>
 
+        <label>
+          <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Metric</span>
+          <select value={metric} onChange={(event) => setMetric(event.target.value as PlanMetric)} className="h-9 min-w-36 px-2 text-sm" aria-label="Analysis metric">
+            <option value="cost">Cost</option>
+            <option value="cpu">CPU</option>
+            <option value="elapsed">Elapsed</option>
+            <option value="buffers">Buffers</option>
+            <option value="rows">Rows</option>
+          </select>
+        </label>
+
         <div className="flex h-9 border border-outline-variant">
           <button type="button" onClick={() => setDirection('TB')} className={`px-3 text-xs font-medium ${direction === 'TB' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'}`}>Top down</button>
           <button type="button" onClick={() => setDirection('LR')} className={`border-l border-outline-variant px-3 text-xs font-medium ${direction === 'LR' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'}`}>Left right</button>
@@ -681,7 +771,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
 
         <label className="flex h-9 items-center gap-2 border border-outline-variant bg-surface-container-low px-3 text-xs font-medium text-on-surface">
           <input type="checkbox" checked={heatmapEnabled} onChange={(event) => setHeatmapEnabled(event.target.checked)} />
-          Cost heat
+          {getMetricLabel(metric)} heat
         </label>
 
         <button type="button" onClick={() => setCollapsedIds(new Set(collapsibleIds))} className="h-9 border border-outline-variant bg-surface-container-low px-3 text-xs font-medium text-on-surface">Collapse all</button>
@@ -691,9 +781,19 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
         <button type="button" onClick={() => exportToImage('svg')} className="h-9 border border-outline-variant bg-surface-container-low px-3 text-xs font-medium text-on-surface">SVG</button>
       </div>
 
+      <nav className="flex min-h-9 items-center gap-1 overflow-x-auto border border-outline-variant bg-surface-container-low px-2" aria-label="Selected node path">
+        {breadcrumbEntries.map((entry, index) => (
+          <div key={entry.id} className="flex shrink-0 items-center gap-1">
+            {index > 0 && <span className="text-on-surface-variant">/</span>}
+            <button type="button" onClick={() => focusNode(entry.id)} className={`px-1 py-2 font-mono text-xs ${entry.id === selectedNodeId ? 'font-semibold text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{entry.node.operation}</button>
+          </div>
+        ))}
+      </nav>
+
       <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div ref={containerRef} className="h-[520px] min-w-0 overflow-auto border border-outline-variant bg-surface-container-lowest md:h-[680px]">
+        <div ref={containerRef} className="relative h-[520px] min-w-0 overflow-auto border border-outline-variant bg-surface-container-lowest md:h-[680px]">
           <svg ref={svgRef} data-testid="execution-plan-svg" className="h-full"></svg>
+          <svg ref={minimapRef} className="absolute bottom-2 left-2 hidden border border-outline-variant bg-surface-container-low/95 shadow-editorial md:block" aria-label="Execution plan minimap"></svg>
         </div>
 
         <aside className="border border-outline-variant bg-surface-container-low">
@@ -710,6 +810,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
                 <dt className="text-on-surface-variant">Cost</dt><dd className="text-right font-mono text-on-surface">{formatNumber(selectedEntry.node.cost)}</dd>
+                <dt className="text-on-surface-variant">Active metric</dt><dd className="text-right font-mono text-primary">{formatNumber(getMetricValue(selectedEntry.node, metric))}</dd>
                 <dt className="text-on-surface-variant">CPU cost</dt><dd className="text-right font-mono text-on-surface">{formatNumber(selectedEntry.node.cpuCost)}</dd>
                 <dt className="text-on-surface-variant">Estimated rows</dt><dd className="text-right font-mono text-on-surface">{formatNumber(selectedEntry.estimatedRows)}</dd>
                 <dt className="text-on-surface-variant">Actual rows</dt><dd className="text-right font-mono text-on-surface">{formatNumber(selectedEntry.actualRows)}</dd>
@@ -744,7 +845,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
                     <span className="block truncate font-mono text-xs font-semibold text-on-surface">{entry.label}</span>
                     <span className="mt-1 block text-xs text-on-surface-variant">Rows {formatNumber(entry.estimatedRows)}{entry.actualRows !== undefined ? ` -> ${formatNumber(entry.actualRows)}` : ''}</span>
                   </span>
-                  <span className="font-mono text-xs font-semibold text-tertiary">{formatNumber(entry.node.cost)}</span>
+                  <span className="font-mono text-xs font-semibold text-tertiary">{formatNumber(getMetricValue(entry.node, metric))}</span>
                 </button>
               ))}
             </div>

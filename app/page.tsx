@@ -1,20 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   comparePlans,
+  analyzePlanIssues,
   flattenPlan,
   normalizePlan,
+  type PlanIssue,
   type PlanComparison,
   type PlanNode,
 } from '@/lib/execution-plan'
+import { parseDbmsXplan } from '@/lib/dbms-xplan'
+import { deleteSavedPlan, listSavedPlans, savePlan, type SavedPlan } from '@/lib/plan-history'
 
 const PlanVisualizer = dynamic(() => import('@/components/PlanVisualizer'), {
   ssr: false,
 })
 
 type Mode = 'single' | 'compare'
+type InputFormat = 'json' | 'xplan'
 
 interface PlanStats {
   totalCost: number
@@ -31,9 +36,10 @@ interface ParsedJsonResult {
 
 interface ComparisonRow {
   id: string
-  kind: 'Added' | 'Removed' | 'Changed'
+  kind: 'Added' | 'Removed' | 'Changed' | 'Moved'
   label: string
   costDelta: number | undefined
+  costPercentDelta: number | undefined
   estimatedRowsDelta: number | undefined
   actualRowsDelta: number | undefined
 }
@@ -69,16 +75,19 @@ function calculateStats(plan: PlanNode): PlanStats {
   return stats
 }
 
-function parsePlanJson(value: string, label: string): ParsedJsonResult {
+function parsePlanInput(value: string, label: string, format: InputFormat): ParsedJsonResult {
+  const formatLabel = format === 'json' ? 'JSON' : 'DBMS_XPLAN text'
+
   if (value.trim().length === 0) {
-    return { plan: null, error: `${label} JSON is empty. Paste a plan before visualizing.` }
+    return { plan: null, error: `${label} ${formatLabel} is empty. Paste a plan before visualizing.` }
   }
 
   try {
-    return { plan: normalizePlan(JSON.parse(value) as unknown), error: null }
+    const plan = format === 'json' ? normalizePlan(JSON.parse(value) as unknown) : parseDbmsXplan(value)
+    return { plan, error: null }
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : 'Unknown validation error.'
-    return { plan: null, error: `${label} JSON is invalid: ${detail}` }
+    return { plan: null, error: `${label} ${formatLabel} is invalid: ${detail}` }
   }
 }
 
@@ -92,6 +101,12 @@ function formatDelta(value: number | undefined): string {
   return `${value > 0 ? '+' : ''}${value.toLocaleString()}`
 }
 
+function formatPercent(value: number | undefined): string {
+  if (value === undefined) return 'n/a'
+  if (!Number.isFinite(value)) return 'Infinity'
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+
 function costDelta(value: number | undefined, direction: 1 | -1 = 1): number | undefined {
   return value === undefined ? undefined : value * direction
 }
@@ -103,6 +118,7 @@ function comparisonRows(comparison: PlanComparison): ComparisonRow[] {
       kind: 'Added' as const,
       label: entry.label,
       costDelta: entry.node.cost,
+      costPercentDelta: undefined,
       estimatedRowsDelta: entry.estimatedRows,
       actualRowsDelta: entry.actualRows,
     })),
@@ -111,14 +127,16 @@ function comparisonRows(comparison: PlanComparison): ComparisonRow[] {
       kind: 'Removed' as const,
       label: entry.label,
       costDelta: costDelta(entry.node.cost, -1),
+      costPercentDelta: undefined,
       estimatedRowsDelta: costDelta(entry.estimatedRows, -1),
       actualRowsDelta: costDelta(entry.actualRows, -1),
     })),
     ...comparison.changed.map((change) => ({
       id: `changed-${change.current.id}`,
-      kind: 'Changed' as const,
+      kind: change.moved ? 'Moved' as const : 'Changed' as const,
       label: change.current.label,
       costDelta: change.costDelta,
+      costPercentDelta: change.costPercentDelta,
       estimatedRowsDelta: change.estimatedRowsDelta,
       actualRowsDelta: change.actualRowsDelta,
     })),
@@ -242,8 +260,59 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
   return { baseline, current }
 }
 
+const singleDbmsSample = `SQL_ID  demo, child number 0
+-------------------------------------
+| Id | Operation          | Name      | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
+-------------------------------------
+|  0 | SELECT STATEMENT   |           |      1 |        |      1 | 00:00:00.02 |     180 |          14 |
+|  1 |  TABLE ACCESS FULL | CUSTOMERS |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
+|  2 |  INDEX RANGE SCAN  | IDX_STATUS|      1 |    120 |    118 | 00:00:00.01 |      20 |           3 |
+-------------------------------------
+Predicate Information:
+1 - filter("STATUS"='ACTIVE')`
+
+function comparisonDbmsSamples() {
+  const baseline = `| Id | Operation          | Name       | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
+|  0 | SELECT STATEMENT   |            |      1 |    100 |     96 | 00:00:00.01 |     100 |          12 |
+|  1 |  TABLE ACCESS FULL | CUSTOMERS  |      1 |    100 |     96 | 00:00:00.01 |      80 |           8 |
+|  2 |  SORT ORDER BY     | CUSTOMER_N |      1 |    100 |     96 | 00:00:00.01 |      20 |           2 |`
+  const current = `| Id | Operation          | Name       | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
+|  0 | SELECT STATEMENT   |            |      1 |    120 |    118 | 00:00:00.03 |     220 |          15 |
+|  1 |  TABLE ACCESS FULL | CUSTOMERS  |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
+|  2 |  TABLE ACCESS FULL | ADDRESSES  |      1 |      5 |    118 | 00:00:00.01 |      60 |           4 |`
+  return { baseline, current }
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  })[character] ?? character)
+}
+
+function reportHtml(plan: PlanNode, stats: PlanStats, issues: PlanIssue[], comparison: PlanComparison | null, diagram: string) {
+  const issueRows = issues.map((issue) => `<tr><td>${escapeHtml(issue.severity)}</td><td>${escapeHtml(issue.title)}</td><td>${escapeHtml(issue.entry.label)}</td><td>${escapeHtml(issue.recommendation)}</td></tr>`).join('')
+  const comparisonSummary = comparison
+    ? `<p>Added ${comparison.added.length}, Removed ${comparison.removed.length}, Changed ${comparison.changed.filter((change) => !change.moved).length}, Moved ${comparison.changed.filter((change) => change.moved).length}</p>`
+    : '<p>Single plan analysis</p>'
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Execution Plan Report</title><style>:root{--cds-background:#f4f4f4;--cds-layer-01:#fff;--cds-layer-accent-01:#e0e0e0;--cds-text-primary:#161616;--cds-text-secondary:#525252;--cds-border-subtle:#c6c6c6;--cds-interactive:#0f62fe;--cds-success:#24a148;--cds-danger:#da1e28;--cds-warning:#f1c21b}body{font-family:Arial,sans-serif;margin:32px;color:#161616}h1,h2{margin:0 0 16px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:20px 0}.stat{border:1px solid #c6c6c6;padding:12px}.stat strong{display:block;font-size:22px;margin-top:6px}table{border-collapse:collapse;width:100%;margin:12px 0 24px}th,td{border:1px solid #c6c6c6;padding:8px;text-align:left;font-size:12px}svg{max-width:100%;height:auto;border:1px solid #c6c6c6}@media print{body{margin:12mm}.no-print{display:none}}</style></head><body><h1>Execution Plan Report</h1>${comparisonSummary}<div class="stats"><div class="stat">Total cost<strong>${stats.totalCost}</strong></div><div class="stat">CPU cost<strong>${stats.totalCpu}</strong></div><div class="stat">Dead branches<strong>${stats.deadBranches}</strong></div><div class="stat">Full scans<strong>${stats.fullScans}</strong></div><div class="stat">Index scans<strong>${stats.indexScans}</strong></div></div><h2>Detected Issues</h2><table><thead><tr><th>Severity</th><th>Issue</th><th>Node</th><th>Recommendation</th></tr></thead><tbody>${issueRows || '<tr><td colspan="4">No issues detected</td></tr>'}</tbody></table><h2>Execution Tree</h2>${diagram}<h2>Normalized Plan JSON</h2><pre>${escapeHtml(JSON.stringify(plan, null, 2))}</pre></body></html>`
+}
+
+function downloadFile(content: string, filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>('single')
+  const [inputFormat, setInputFormat] = useState<InputFormat>('json')
   const [planJson, setPlanJson] = useState<string>('')
   const [baselinePlanJson, setBaselinePlanJson] = useState<string>('')
   const [currentPlanJson, setCurrentPlanJson] = useState<string>('')
@@ -251,6 +320,28 @@ export default function Home() {
   const [comparison, setComparison] = useState<PlanComparison | null>(null)
   const [error, setError] = useState<string>('')
   const [stats, setStats] = useState<PlanStats | null>(null)
+  const [baselineStats, setBaselineStats] = useState<PlanStats | null>(null)
+  const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([])
+  const [historyName, setHistoryName] = useState('')
+  const [historySqlName, setHistorySqlName] = useState('')
+  const [historyEnvironment, setHistoryEnvironment] = useState('')
+  const [historyNotes, setHistoryNotes] = useState('')
+  const [historyError, setHistoryError] = useState('')
+
+  const issues = useMemo(() => parsedPlan ? analyzePlanIssues(parsedPlan) : [], [parsedPlan])
+
+  const refreshHistory = async () => {
+    try {
+      setSavedPlans(await listSavedPlans())
+      setHistoryError('')
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : 'Unable to read plan history.')
+    }
+  }
+
+  useEffect(() => {
+    void refreshHistory()
+  }, [])
 
   const handleModeChange = (nextMode: Mode) => {
     setMode(nextMode)
@@ -258,6 +349,7 @@ export default function Home() {
     setParsedPlan(null)
     setComparison(null)
     setStats(null)
+    setBaselineStats(null)
 
     if (nextMode === 'compare' && baselinePlanJson.trim().length === 0 && planJson.trim().length > 0) {
       setBaselinePlanJson(planJson)
@@ -269,11 +361,12 @@ export default function Home() {
     setError('')
 
     if (mode === 'single') {
-      const result = parsePlanJson(planJson, 'Current plan')
+      const result = parsePlanInput(planJson, 'Current plan', inputFormat)
       if (result.error || !result.plan) {
         setParsedPlan(null)
         setComparison(null)
         setStats(null)
+        setBaselineStats(null)
         setError(result.error ?? 'Current plan could not be validated.')
         return
       }
@@ -281,54 +374,140 @@ export default function Home() {
       setParsedPlan(result.plan)
       setStats(calculateStats(result.plan))
       setComparison(null)
+      setBaselineStats(null)
       return
     }
 
-    const baselineResult = parsePlanJson(baselinePlanJson, 'Baseline plan')
+    const baselineResult = parsePlanInput(baselinePlanJson, 'Baseline plan', inputFormat)
     if (baselineResult.error || !baselineResult.plan) {
       setParsedPlan(null)
       setComparison(null)
       setStats(null)
+      setBaselineStats(null)
       setError(baselineResult.error ?? 'Baseline plan could not be validated.')
       return
     }
 
-    const currentResult = parsePlanJson(currentPlanJson, 'Current plan')
+    const currentResult = parsePlanInput(currentPlanJson, 'Current plan', inputFormat)
     if (currentResult.error || !currentResult.plan) {
       setParsedPlan(null)
       setComparison(null)
       setStats(null)
+      setBaselineStats(null)
       setError(currentResult.error ?? 'Current plan could not be validated.')
       return
     }
 
     setParsedPlan(currentResult.plan)
     setStats(calculateStats(currentResult.plan))
+    setBaselineStats(calculateStats(baselineResult.plan))
     setComparison(comparePlans(baselineResult.plan, currentResult.plan))
   }
 
   const loadSample = () => {
     const current = singleSample()
-    const currentJson = JSON.stringify(current, null, 2)
+    const currentJson = inputFormat === 'json' ? JSON.stringify(current, null, 2) : singleDbmsSample
+    const loadedCurrent = inputFormat === 'json' ? current : parseDbmsXplan(singleDbmsSample)
     setPlanJson(currentJson)
 
     if (mode === 'single') {
-      setParsedPlan(current)
-      setStats(calculateStats(current))
+      setParsedPlan(loadedCurrent)
+      setStats(calculateStats(loadedCurrent))
       setComparison(null)
+      setBaselineStats(null)
       setError('')
       return
     }
 
     const samples = comparisonSamples()
-    const baselineJson = JSON.stringify(samples.baseline, null, 2)
-    const compareCurrentJson = JSON.stringify(samples.current, null, 2)
+    const textSamples = comparisonDbmsSamples()
+    const baselineJson = inputFormat === 'json' ? JSON.stringify(samples.baseline, null, 2) : textSamples.baseline
+    const compareCurrentJson = inputFormat === 'json' ? JSON.stringify(samples.current, null, 2) : textSamples.current
+    const baselinePlan = inputFormat === 'json' ? samples.baseline : parseDbmsXplan(textSamples.baseline)
+    const currentPlan = inputFormat === 'json' ? samples.current : parseDbmsXplan(textSamples.current)
     setBaselinePlanJson(baselineJson)
     setCurrentPlanJson(compareCurrentJson)
-    setParsedPlan(samples.current)
-    setStats(calculateStats(samples.current))
-    setComparison(comparePlans(samples.baseline, samples.current))
+    setParsedPlan(currentPlan)
+    setStats(calculateStats(currentPlan))
+    setBaselineStats(calculateStats(baselinePlan))
+    setComparison(comparePlans(baselinePlan, currentPlan))
     setError('')
+  }
+
+  const saveCurrentPlan = async () => {
+    if (!parsedPlan) return
+    try {
+      await savePlan({
+        name: historyName.trim() || `Plan ${new Date().toLocaleString()}`,
+        sqlName: historySqlName.trim() || undefined,
+        environment: historyEnvironment.trim() || undefined,
+        notes: historyNotes.trim() || undefined,
+        plan: parsedPlan,
+      })
+      setHistoryName('')
+      setHistoryNotes('')
+      setHistoryError('')
+      await refreshHistory()
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : 'Unable to save plan history.')
+    }
+  }
+
+  const loadHistoryPlan = (saved: SavedPlan) => {
+    const json = JSON.stringify(saved.plan, null, 2)
+    setMode('single')
+    setInputFormat('json')
+    setPlanJson(json)
+    setParsedPlan(saved.plan)
+    setStats(calculateStats(saved.plan))
+    setBaselineStats(null)
+    setComparison(null)
+    setError('')
+  }
+
+  const loadHistoryAsBaseline = (saved: SavedPlan) => {
+    setMode('compare')
+    setInputFormat('json')
+    setBaselinePlanJson(JSON.stringify(saved.plan, null, 2))
+    const current = parsedPlan ?? saved.plan
+    setCurrentPlanJson(JSON.stringify(current, null, 2))
+    setParsedPlan(current)
+    setBaselineStats(calculateStats(saved.plan))
+    setStats(calculateStats(current))
+    setComparison(comparePlans(saved.plan, current))
+    setError('')
+  }
+
+  const removeHistoryPlan = async (id: string) => {
+    try {
+      await deleteSavedPlan(id)
+      await refreshHistory()
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : 'Unable to delete the saved plan.')
+    }
+  }
+
+  const createReport = () => {
+    if (!parsedPlan || !stats) return ''
+    const svg = document.querySelector<SVGSVGElement>('[data-testid="execution-plan-svg"]')
+    const diagram = svg ? new XMLSerializer().serializeToString(svg) : '<p>Diagram unavailable</p>'
+    return reportHtml(parsedPlan, stats, issues, comparison, diagram)
+  }
+
+  const downloadReport = () => {
+    const report = createReport()
+    if (report) downloadFile(report, 'execution-plan-report.html', 'text/html;charset=utf-8')
+  }
+
+  const printReport = () => {
+    const report = createReport()
+    if (!report) return
+    const reportWindow = window.open('', '_blank')
+    if (!reportWindow) return
+    reportWindow.opener = null
+    reportWindow.document.write(report)
+    reportWindow.document.close()
+    reportWindow.addEventListener('load', () => reportWindow.print(), { once: true })
   }
 
   const visualizerComparison = comparison
@@ -338,6 +517,14 @@ export default function Home() {
       }
     : { addedIds: [], changedIds: [] }
   const rows = comparison ? comparisonRows(comparison) : []
+  const movedCount = comparison?.changed.filter((change) => change.moved).length ?? 0
+  const changedCount = comparison ? comparison.changed.length - movedCount : 0
+  const totalCostDelta = stats && baselineStats ? stats.totalCost - baselineStats.totalCost : undefined
+  const totalCostPercent = stats && baselineStats
+    ? baselineStats.totalCost === 0
+      ? stats.totalCost === 0 ? 0 : Infinity
+      : (totalCostDelta! / Math.abs(baselineStats.totalCost)) * 100
+    : undefined
 
   return (
     <div className="mx-auto max-w-full p-4">
@@ -368,8 +555,12 @@ export default function Home() {
 
       <div className="mb-4 overflow-hidden rounded-lg bg-surface-container-low shadow-editorial">
         <div className="flex flex-col gap-3 bg-surface-container px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <h3 className="text-sm font-label font-semibold uppercase tracking-wide text-on-surface">Execution Plan JSON</h3>
+          <h3 className="text-sm font-label font-semibold uppercase tracking-wide text-on-surface">Execution Plan Input</h3>
           <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex border border-outline-variant/60 bg-surface-container-lowest" role="group" aria-label="Plan input format">
+              <button type="button" aria-pressed={inputFormat === 'json'} onClick={() => setInputFormat('json')} className={`px-3 py-2 text-sm font-medium ${inputFormat === 'json' ? 'bg-primary text-white' : 'text-on-surface hover:bg-surface-container'}`}>JSON</button>
+              <button type="button" aria-pressed={inputFormat === 'xplan'} onClick={() => setInputFormat('xplan')} className={`border-l border-outline-variant/60 px-3 py-2 text-sm font-medium ${inputFormat === 'xplan' ? 'bg-primary text-white' : 'text-on-surface hover:bg-surface-container'}`}>DBMS_XPLAN</button>
+            </div>
             <div className="inline-flex border border-outline-variant/60 bg-surface-container-lowest" role="group" aria-label="Plan input mode">
               <button
                 type="button"
@@ -395,37 +586,43 @@ export default function Home() {
             >
               Load Sample
             </button>
+            {parsedPlan && (
+              <>
+                <button type="button" onClick={downloadReport} className="border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-medium text-on-surface">HTML Report</button>
+                <button type="button" onClick={printReport} className="border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-medium text-on-surface">Print / PDF</button>
+              </>
+            )}
           </div>
         </div>
 
         <div className="p-4">
           {mode === 'single' ? (
             <label className="block">
-              <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Current Plan JSON</span>
+              <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Current Plan {inputFormat === 'json' ? 'JSON' : 'DBMS_XPLAN'}</span>
               <textarea
                 value={planJson}
                 onChange={(event) => setPlanJson(event.target.value)}
-                placeholder="Paste your Oracle execution plan JSON here..."
+                placeholder={inputFormat === 'json' ? 'Paste your Oracle execution plan JSON here...' : 'Paste DBMS_XPLAN.DISPLAY_CURSOR output here...'}
                 className="h-48 w-full resize-y rounded-lg border border-outline-variant/60 bg-surface-container-lowest p-3 font-mono text-sm text-on-surface placeholder-on-surface-variant/50 focus:border-transparent focus:ring-2 focus:ring-primary"
               />
             </label>
           ) : (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Baseline Plan JSON</span>
+                <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Baseline Plan {inputFormat === 'json' ? 'JSON' : 'DBMS_XPLAN'}</span>
                 <textarea
                   value={baselinePlanJson}
                   onChange={(event) => setBaselinePlanJson(event.target.value)}
-                  placeholder="Paste the baseline execution plan JSON here..."
+                  placeholder={inputFormat === 'json' ? 'Paste the baseline execution plan JSON here...' : 'Paste the baseline DBMS_XPLAN output here...'}
                   className="h-48 w-full resize-y rounded-lg border border-outline-variant/60 bg-surface-container-lowest p-3 font-mono text-sm text-on-surface placeholder-on-surface-variant/50 focus:border-transparent focus:ring-2 focus:ring-primary"
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Current Plan JSON</span>
+                <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Current Plan {inputFormat === 'json' ? 'JSON' : 'DBMS_XPLAN'}</span>
                 <textarea
                   value={currentPlanJson}
                   onChange={(event) => setCurrentPlanJson(event.target.value)}
-                  placeholder="Paste the current execution plan JSON here..."
+                  placeholder={inputFormat === 'json' ? 'Paste the current execution plan JSON here...' : 'Paste the current DBMS_XPLAN output here...'}
                   className="h-48 w-full resize-y rounded-lg border border-outline-variant/60 bg-surface-container-lowest p-3 font-mono text-sm text-on-surface placeholder-on-surface-variant/50 focus:border-transparent focus:ring-2 focus:ring-primary"
                 />
               </label>
@@ -448,6 +645,55 @@ export default function Home() {
         </div>
       </div>
 
+      {parsedPlan && (
+        <section className="mb-4 overflow-hidden rounded-lg bg-surface-container-low shadow-editorial" aria-labelledby="issues-heading">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/60 bg-surface-container px-4 py-3">
+            <h3 id="issues-heading" className="text-sm font-label font-semibold uppercase tracking-wide text-on-surface">Execution Summary</h3>
+            <div className="flex gap-4 text-xs text-on-surface-variant">
+              <span>Critical {issues.filter((issue) => issue.severity === 'critical').length}</span>
+              <span>Warnings {issues.filter((issue) => issue.severity === 'warning').length}</span>
+              <span>Info {issues.filter((issue) => issue.severity === 'info').length}</span>
+            </div>
+          </div>
+          <div className="divide-y divide-outline-variant/50">
+            {issues.length > 0 ? issues.map((issue) => (
+              <div key={issue.id} className="grid gap-2 px-4 py-3 md:grid-cols-[90px_minmax(180px,1fr)_minmax(260px,2fr)]">
+                <span className={`text-xs font-semibold uppercase ${issue.severity === 'critical' ? 'text-tertiary' : issue.severity === 'warning' ? 'text-[#b28600]' : 'text-primary'}`}>{issue.severity}</span>
+                <div><div className="text-sm font-semibold text-on-surface">{issue.title}</div><div className="mt-1 font-mono text-xs text-on-surface-variant">{issue.entry.label}</div></div>
+                <div className="text-sm text-on-surface-variant">{issue.recommendation}</div>
+              </div>
+            )) : <p className="px-4 py-3 text-sm text-on-surface-variant">No execution-plan issues detected.</p>}
+          </div>
+        </section>
+      )}
+
+      <section className="mb-4 overflow-hidden rounded-lg bg-surface-container-low shadow-editorial" aria-labelledby="history-heading">
+        <div className="border-b border-outline-variant/60 bg-surface-container px-4 py-3">
+          <h3 id="history-heading" className="text-sm font-label font-semibold uppercase tracking-wide text-on-surface">Plan History</h3>
+        </div>
+        <div className="grid gap-3 border-b border-outline-variant/60 p-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_2fr_auto]">
+          <input value={historyName} onChange={(event) => setHistoryName(event.target.value)} placeholder="Plan name" aria-label="History plan name" className="h-10 px-3 text-sm" />
+          <input value={historySqlName} onChange={(event) => setHistorySqlName(event.target.value)} placeholder="SQL name" aria-label="History SQL name" className="h-10 px-3 text-sm" />
+          <input value={historyEnvironment} onChange={(event) => setHistoryEnvironment(event.target.value)} placeholder="Environment" aria-label="History environment" className="h-10 px-3 text-sm" />
+          <input value={historyNotes} onChange={(event) => setHistoryNotes(event.target.value)} placeholder="Notes" aria-label="History notes" className="h-10 px-3 text-sm" />
+          <button type="button" onClick={() => void saveCurrentPlan()} disabled={!parsedPlan} className="h-10 bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save Current</button>
+        </div>
+        {historyError && <p className="px-4 py-3 text-sm text-tertiary">{historyError}</p>}
+        <div className="divide-y divide-outline-variant/50">
+          {savedPlans.length > 0 ? savedPlans.map((saved) => (
+            <div key={saved.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(180px,1fr)_minmax(160px,1fr)_auto] md:items-center">
+              <div><div className="font-semibold text-on-surface">{saved.name}</div><div className="mt-1 text-xs text-on-surface-variant">{new Date(saved.updatedAt).toLocaleString()}{saved.environment ? ` | ${saved.environment}` : ''}{saved.sqlName ? ` | ${saved.sqlName}` : ''}</div></div>
+              <div className="text-sm text-on-surface-variant">{saved.notes || `${flattenPlan(saved.plan).length} nodes`}</div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => loadHistoryPlan(saved)} className="border border-outline-variant bg-surface-container px-3 py-2 text-xs font-medium text-on-surface">Load</button>
+                <button type="button" onClick={() => loadHistoryAsBaseline(saved)} className="border border-outline-variant bg-surface-container px-3 py-2 text-xs font-medium text-on-surface">Baseline</button>
+                <button type="button" onClick={() => void removeHistoryPlan(saved.id)} className="border border-tertiary/40 px-3 py-2 text-xs font-medium text-tertiary">Delete</button>
+              </div>
+            </div>
+          )) : <p className="px-4 py-3 text-sm text-on-surface-variant">No saved plans.</p>}
+        </div>
+      </section>
+
       {comparison && (
         <section className="mb-4 overflow-hidden rounded-lg bg-surface-container-low shadow-editorial" aria-labelledby="comparison-heading">
           <div className="flex flex-col gap-2 border-b border-outline-variant/60 bg-surface-container px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -455,7 +701,9 @@ export default function Home() {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-label text-on-surface-variant">
               <span>Added {comparison.added.length}</span>
               <span>Removed {comparison.removed.length}</span>
-              <span>Changed {comparison.changed.length}</span>
+              <span>Changed {changedCount}</span>
+              <span>Moved {movedCount}</span>
+              {totalCostDelta !== undefined && <span className={totalCostDelta > 0 ? 'text-tertiary' : totalCostDelta < 0 ? 'text-green-600' : ''}>Total cost {formatDelta(totalCostDelta)} ({formatPercent(totalCostPercent)})</span>}
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -473,11 +721,11 @@ export default function Home() {
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id} className="border-b border-outline-variant/40 last:border-b-0">
-                      <td className={`whitespace-nowrap px-4 py-2 font-label text-xs font-semibold uppercase ${row.kind === 'Added' ? 'text-primary' : row.kind === 'Removed' ? 'text-tertiary' : 'text-[#a2191f]'}`}>
+                      <td className={`whitespace-nowrap px-4 py-2 font-label text-xs font-semibold uppercase ${row.kind === 'Added' ? 'text-green-600' : row.kind === 'Removed' ? 'text-tertiary' : row.kind === 'Moved' ? 'text-[#8a3ffc]' : 'text-[#a2191f]'}`}>
                         {row.kind}
                       </td>
                       <td className="px-4 py-2 font-mono text-xs text-on-surface">{row.label}</td>
-                      <td className="px-4 py-2 text-right font-mono text-xs text-on-surface">{formatDelta(row.costDelta)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-xs text-on-surface">{formatDelta(row.costDelta)} <span className="text-on-surface-variant">({formatPercent(row.costPercentDelta)})</span></td>
                       <td className="px-4 py-2 text-right font-mono text-xs text-on-surface-variant">{formatDelta(row.estimatedRowsDelta)}</td>
                       <td className="px-4 py-2 text-right font-mono text-xs text-on-surface-variant">{formatDelta(row.actualRowsDelta)}</td>
                     </tr>
@@ -501,10 +749,10 @@ export default function Home() {
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full border border-on-surface bg-yellow-400" /><span className="text-xs font-label text-on-surface-variant">Dead Code (NULL IS NOT NULL)</span></div>
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full border border-on-surface bg-tertiary" /><span className="text-xs font-label text-on-surface-variant">Full Table Scan</span></div>
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full border border-on-surface bg-cyan-600" /><span className="text-xs font-label text-on-surface-variant">Index Scan</span></div>
-              <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-on-surface bg-[#ff832b]" /><span className="text-xs font-label text-on-surface-variant">Cost heatmap</span></div>
+              <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-on-surface bg-[#ff832b]" /><span className="text-xs font-label text-on-surface-variant">Metric heatmap</span></div>
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-on-surface bg-green-600" /><span className="text-xs font-label text-on-surface-variant">Added</span></div>
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-on-surface bg-[#8a3ffc]" /><span className="text-xs font-label text-on-surface-variant">Changed</span></div>
-              <div className="flex items-center gap-2"><span className="h-1 w-5 bg-orange-500" /><span className="text-xs font-label text-on-surface-variant">Highest Cost Path</span></div>
+              <div className="flex items-center gap-2"><span className="h-1 w-5 bg-orange-500" /><span className="text-xs font-label text-on-surface-variant">Critical Path</span></div>
             </div>
           )}
         </div>

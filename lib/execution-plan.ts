@@ -31,12 +31,27 @@ export interface PlanChange {
   costDelta: number | undefined
   estimatedRowsDelta: number | undefined
   actualRowsDelta: number | undefined
+  costPercentDelta: number | undefined
+  estimatedRowsPercentDelta: number | undefined
+  actualRowsPercentDelta: number | undefined
+  moved: boolean
 }
 
 export interface PlanComparison {
   added: PlanEntry[]
   removed: PlanEntry[]
   changed: PlanChange[]
+}
+
+export type PlanMetric = 'cost' | 'cpu' | 'elapsed' | 'buffers' | 'rows'
+
+export interface PlanIssue {
+  id: string
+  severity: 'critical' | 'warning' | 'info'
+  type: 'misestimate' | 'full-scan' | 'cartesian' | 'expensive-sort' | 'dead-branch'
+  entry: PlanEntry
+  title: string
+  recommendation: string
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -178,21 +193,37 @@ function nodeCost(node: PlanNode): number {
   return Number.isFinite(node.cost) ? node.cost ?? 0 : 0
 }
 
-export function getHighestCostPathIds(plan: PlanNode): string[] {
-  const findPath = (node: PlanNode, id: string): { totalCost: number; ids: string[] } => {
+export function getMetricValue(node: PlanNode, metric: PlanMetric): number {
+  switch (metric) {
+    case 'cpu': return node.cpuCost ?? 0
+    case 'elapsed': return node.elapsedTimeMs ?? 0
+    case 'buffers': return node.buffers ?? 0
+    case 'rows': return node.actualRows ?? node.estimatedRows ?? node.cardinality ?? 0
+    default: return nodeCost(node)
+  }
+}
+
+export function getMetricLabel(metric: PlanMetric): string {
+  switch (metric) {
+    case 'cpu': return 'CPU cost'
+    case 'elapsed': return 'Elapsed time'
+    case 'buffers': return 'Buffers'
+    case 'rows': return 'Rows'
+    default: return 'Cost'
+  }
+}
+
+export function getCriticalPathIds(plan: PlanNode, metric: PlanMetric): string[] {
+  const findPath = (node: PlanNode, id: string): { peak: number; ids: string[] } => {
     const childPaths = (node.children ?? [])
       .map((child, index) => ({ child, index }))
       .filter(({ child }) => !isDeadNode(child))
       .map(({ child, index }) => findPath(child, `${id}.${index}`))
 
-    if (childPaths.length === 0) return { totalCost: nodeCost(node), ids: [id] }
-
-    const highestChildPath = childPaths.reduce((highest, current) =>
-      current.totalCost > highest.totalCost ? current : highest
-    )
-
+    if (childPaths.length === 0) return { peak: getMetricValue(node, metric), ids: [id] }
+    const highestChildPath = childPaths.reduce((highest, current) => current.peak > highest.peak ? current : highest)
     return {
-      totalCost: nodeCost(node) + highestChildPath.totalCost,
+      peak: Math.max(getMetricValue(node, metric), highestChildPath.peak),
       ids: [id, ...highestChildPath.ids],
     }
   }
@@ -200,15 +231,19 @@ export function getHighestCostPathIds(plan: PlanNode): string[] {
   return findPath(plan, '0').ids
 }
 
-export function getBottlenecks(plan: PlanNode, limit = 5): PlanEntry[] {
+export function getHighestCostPathIds(plan: PlanNode): string[] {
+  return getCriticalPathIds(plan, 'cost')
+}
+
+export function getBottlenecks(plan: PlanNode, limit = 5, metric: PlanMetric = 'cost'): PlanEntry[] {
   if (!Number.isFinite(limit) || limit <= 0) return []
 
   return flattenPlan(plan)
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => !isDeadNode(entry.node))
     .sort((left, right) => {
-      const costDelta = nodeCost(right.entry.node) - nodeCost(left.entry.node)
-      if (costDelta !== 0) return costDelta
+      const metricDelta = getMetricValue(right.entry.node, metric) - getMetricValue(left.entry.node, metric)
+      if (metricDelta !== 0) return metricDelta
 
       const cpuDelta = (right.entry.node.cpuCost ?? 0) - (left.entry.node.cpuCost ?? 0)
       if (cpuDelta !== 0) return cpuDelta
@@ -217,6 +252,76 @@ export function getBottlenecks(plan: PlanNode, limit = 5): PlanEntry[] {
     })
     .slice(0, Math.floor(limit))
     .map(({ entry }) => entry)
+}
+
+export function analyzePlanIssues(plan: PlanNode): PlanIssue[] {
+  const entries = flattenPlan(plan)
+  const maxCost = Math.max(0, ...entries.map((entry) => nodeCost(entry.node)))
+  const issues: PlanIssue[] = []
+
+  for (const entry of entries) {
+    const operation = entry.node.operation.toUpperCase()
+    const options = entry.node.options?.toUpperCase() ?? ''
+    const ratio = entry.misestimateRatio
+
+    if (ratio !== undefined && (ratio >= 10 || ratio <= 0.1)) {
+      issues.push({
+        id: `${entry.id}-misestimate`,
+        severity: ratio >= 100 || ratio <= 0.01 ? 'critical' : 'warning',
+        type: 'misestimate',
+        entry,
+        title: `Cardinality estimate differs by ${Number.isFinite(ratio) ? `${ratio.toFixed(ratio >= 10 ? 0 : 2)}x` : 'Infinity'}`,
+        recommendation: 'Refresh statistics and review predicate correlation, histograms, and bind selectivity.',
+      })
+    }
+
+    if (operation === 'TABLE ACCESS' && options === 'FULL') {
+      issues.push({
+        id: `${entry.id}-full-scan`,
+        severity: maxCost > 0 && entry.node.cost !== undefined && entry.node.cost >= maxCost * 0.5 ? 'critical' : 'warning',
+        type: 'full-scan',
+        entry,
+        title: `Full table scan on ${entry.node.objectName ?? 'unknown object'}`,
+        recommendation: 'Review predicate selectivity, table size, partition pruning, and available indexes.',
+      })
+    }
+
+    if (operation.includes('CARTESIAN')) {
+      issues.push({
+        id: `${entry.id}-cartesian`,
+        severity: 'critical',
+        type: 'cartesian',
+        entry,
+        title: 'Cartesian join detected',
+        recommendation: 'Verify join predicates and row-source cardinality before this operation.',
+      })
+    }
+
+    if (operation === 'SORT' && nodeCost(entry.node) >= maxCost * 0.5 && maxCost > 0) {
+      issues.push({
+        id: `${entry.id}-sort`,
+        severity: 'warning',
+        type: 'expensive-sort',
+        entry,
+        title: `Expensive sort (${entry.node.options ?? 'SORT'})`,
+        recommendation: 'Review ordering/grouping requirements, memory sizing, and supporting indexes.',
+      })
+    }
+
+    if (isDeadNode(entry.node)) {
+      issues.push({
+        id: `${entry.id}-dead`,
+        severity: 'info',
+        type: 'dead-branch',
+        entry,
+        title: 'Unreachable branch',
+        recommendation: 'Treat this branch as non-runtime work and simplify the originating predicate when possible.',
+      })
+    }
+  }
+
+  const severityOrder = { critical: 0, warning: 1, info: 2 }
+  return issues.sort((left, right) => severityOrder[left.severity] - severityOrder[right.severity])
 }
 
 function semanticKey(node: PlanNode): string {
@@ -259,6 +364,26 @@ function matchDistance(previous: PlanEntry, current: PlanEntry): number {
 
 function delta(current: number | undefined, previous: number | undefined): number | undefined {
   return current !== undefined && previous !== undefined ? current - previous : undefined
+}
+
+function percentDelta(current: number | undefined, previous: number | undefined): number | undefined {
+  if (current === undefined || previous === undefined) return undefined
+  if (previous === 0) return current === 0 ? 0 : Infinity
+  return ((current - previous) / Math.abs(previous)) * 100
+}
+
+function toPlanChange(previous: PlanEntry, current: PlanEntry, moved: boolean): PlanChange {
+  return {
+    previous,
+    current,
+    costDelta: delta(current.node.cost, previous.node.cost),
+    estimatedRowsDelta: delta(current.estimatedRows, previous.estimatedRows),
+    actualRowsDelta: delta(current.actualRows, previous.actualRows),
+    costPercentDelta: percentDelta(current.node.cost, previous.node.cost),
+    estimatedRowsPercentDelta: percentDelta(current.estimatedRows, previous.estimatedRows),
+    actualRowsPercentDelta: percentDelta(current.actualRows, previous.actualRows),
+    moved,
+  }
 }
 
 function numbersDiffer(current: number | undefined, previous: number | undefined): boolean {
@@ -321,14 +446,26 @@ export function comparePlans(previous: PlanNode, current: PlanNode): PlanCompari
 
     matchedPrevious.add(previousEntry)
     if (entriesDiffer(previousEntry, currentEntry)) {
-      changed.push({
-        previous: previousEntry,
-        current: currentEntry,
-        costDelta: delta(currentEntry.node.cost, previousEntry.node.cost),
-        estimatedRowsDelta: delta(currentEntry.estimatedRows, previousEntry.estimatedRows),
-        actualRowsDelta: delta(currentEntry.actualRows, previousEntry.actualRows),
-      })
+      changed.push(toPlanChange(previousEntry, currentEntry, false))
     }
+  }
+
+  const unmatchedPrevious = previousEntries.filter((entry) => !matchedPrevious.has(entry))
+  const addedKeyCounts = new Map<string, number>()
+  for (const entry of added) {
+    const key = semanticKey(entry.node)
+    addedKeyCounts.set(key, (addedKeyCounts.get(key) ?? 0) + 1)
+  }
+
+  for (let addedIndex = added.length - 1; addedIndex >= 0; addedIndex -= 1) {
+    const currentEntry = added[addedIndex]
+    const key = semanticKey(currentEntry.node)
+    const candidates = unmatchedPrevious.filter((entry) => !matchedPrevious.has(entry) && semanticKey(entry.node) === key)
+    if (candidates.length !== 1 || addedKeyCounts.get(key) !== 1) continue
+    const previousEntry = candidates[0]
+    matchedPrevious.add(previousEntry)
+    added.splice(addedIndex, 1)
+    changed.push(toPlanChange(previousEntry, currentEntry, true))
   }
 
   return {

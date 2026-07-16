@@ -191,7 +191,9 @@ export default function RootLayout({
 
           {/* Mobile overlay */}
           {sidebarOpen && (
-            <div
+            <button
+              type="button"
+              aria-label="Close navigation menu"
               className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden transition-opacity"
               onClick={() => setSidebarOpen(false)}
             />
