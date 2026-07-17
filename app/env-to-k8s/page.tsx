@@ -1,6 +1,7 @@
 'use client'
 
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { copyText, toast } from '@/lib/toast'
 
 interface EnvVar {
   name: string
@@ -278,17 +279,20 @@ export default function EnvToK8s() {
       setOutput('')
       setClipboardError('')
     } catch {
-      setClipboardError('Browser blocked clipboard access. Use Ctrl+V inside the input box.')
+      const message = 'Browser blocked clipboard access. Use Ctrl+V inside the input box.'
+      setClipboardError(message)
+      toast.error('Unable to paste', message)
     }
   }
 
   const convertToYaml = () => {
     setOutput(toK8sEnv(envVars, includeEnvKey, prefix))
+    toast.success(`Converted ${envVars.length} variable${envVars.length === 1 ? '' : 's'}`)
   }
 
   const copyToClipboard = () => {
     if (!output) return
-    navigator.clipboard.writeText(output)
+    void copyText(output, 'Kubernetes YAML copied')
   }
 
   const clearAll = () => {
@@ -331,8 +335,11 @@ export default function EnvToK8s() {
       try {
         await navigator.clipboard.writeText(`${removal.lineText}\n`)
         removeCurrentLine(cursor)
+        toast.success('Line cut')
       } catch {
-        setClipboardError('Browser blocked clipboard access. Select text before using Ctrl+X.')
+        const message = 'Browser blocked clipboard access. Select text before using Ctrl+X.'
+        setClipboardError(message)
+        toast.error('Unable to cut line', message)
       }
     }
   }

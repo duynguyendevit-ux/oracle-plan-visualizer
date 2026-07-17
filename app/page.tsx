@@ -13,6 +13,9 @@ import {
 } from '@/lib/execution-plan'
 import { parseDbmsXplan } from '@/lib/dbms-xplan'
 import { deleteSavedPlan, listSavedPlans, savePlan, type SavedPlan } from '@/lib/plan-history'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
+import { toast } from '@/lib/toast'
 
 const PlanVisualizer = dynamic(() => import('@/components/PlanVisualizer'), {
   ssr: false,
@@ -328,6 +331,47 @@ export default function Home() {
   const [historyNotes, setHistoryNotes] = useState('')
   const [historyError, setHistoryError] = useState('')
 
+  useToolSession('execution-plan', {
+    mode,
+    inputFormat,
+    planJson,
+    baselinePlanJson,
+    currentPlanJson,
+    historySqlName,
+    historyEnvironment,
+  }, (saved) => {
+    const restoredMode: Mode = saved.mode === 'compare' ? 'compare' : 'single'
+    const restoredFormat: InputFormat = saved.inputFormat === 'xplan' ? 'xplan' : 'json'
+    const singleInput = typeof saved.planJson === 'string' ? saved.planJson : ''
+    const baselineInput = typeof saved.baselinePlanJson === 'string' ? saved.baselinePlanJson : ''
+    const currentInput = typeof saved.currentPlanJson === 'string' ? saved.currentPlanJson : ''
+
+    setMode(restoredMode)
+    setInputFormat(restoredFormat)
+    setPlanJson(singleInput)
+    setBaselinePlanJson(baselineInput)
+    setCurrentPlanJson(currentInput)
+    if (typeof saved.historySqlName === 'string') setHistorySqlName(saved.historySqlName)
+    if (typeof saved.historyEnvironment === 'string') setHistoryEnvironment(saved.historyEnvironment)
+
+    if (restoredMode === 'single' && singleInput.trim()) {
+      const result = parsePlanInput(singleInput, 'Current plan', restoredFormat)
+      if (result.plan) {
+        setParsedPlan(result.plan)
+        setStats(calculateStats(result.plan))
+      }
+    } else if (restoredMode === 'compare' && baselineInput.trim() && currentInput.trim()) {
+      const baseline = parsePlanInput(baselineInput, 'Baseline plan', restoredFormat)
+      const current = parsePlanInput(currentInput, 'Current plan', restoredFormat)
+      if (baseline.plan && current.plan) {
+        setParsedPlan(current.plan)
+        setStats(calculateStats(current.plan))
+        setBaselineStats(calculateStats(baseline.plan))
+        setComparison(comparePlans(baseline.plan, current.plan))
+      }
+    }
+  }, { maxBytes: 1_000_000 })
+
   const issues = useMemo(() => parsedPlan ? analyzePlanIssues(parsedPlan) : [], [parsedPlan])
 
   const refreshHistory = async () => {
@@ -335,7 +379,9 @@ export default function Home() {
       setSavedPlans(await listSavedPlans())
       setHistoryError('')
     } catch (cause) {
-      setHistoryError(cause instanceof Error ? cause.message : 'Unable to read plan history.')
+      const message = cause instanceof Error ? cause.message : 'Unable to read plan history.'
+      setHistoryError(message)
+      toast.error(message)
     }
   }
 
@@ -367,7 +413,9 @@ export default function Home() {
         setComparison(null)
         setStats(null)
         setBaselineStats(null)
-        setError(result.error ?? 'Current plan could not be validated.')
+        const message = result.error ?? 'Current plan could not be validated.'
+        setError(message)
+        toast.error('Unable to visualize plan', message)
         return
       }
 
@@ -375,6 +423,7 @@ export default function Home() {
       setStats(calculateStats(result.plan))
       setComparison(null)
       setBaselineStats(null)
+      toast.success('Execution plan visualized')
       return
     }
 
@@ -384,7 +433,9 @@ export default function Home() {
       setComparison(null)
       setStats(null)
       setBaselineStats(null)
-      setError(baselineResult.error ?? 'Baseline plan could not be validated.')
+      const message = baselineResult.error ?? 'Baseline plan could not be validated.'
+      setError(message)
+      toast.error('Unable to compare plans', message)
       return
     }
 
@@ -394,7 +445,9 @@ export default function Home() {
       setComparison(null)
       setStats(null)
       setBaselineStats(null)
-      setError(currentResult.error ?? 'Current plan could not be validated.')
+      const message = currentResult.error ?? 'Current plan could not be validated.'
+      setError(message)
+      toast.error('Unable to compare plans', message)
       return
     }
 
@@ -402,6 +455,7 @@ export default function Home() {
     setStats(calculateStats(currentResult.plan))
     setBaselineStats(calculateStats(baselineResult.plan))
     setComparison(comparePlans(baselineResult.plan, currentResult.plan))
+    toast.success('Execution plans compared')
   }
 
   const loadSample = () => {
@@ -448,8 +502,11 @@ export default function Home() {
       setHistoryNotes('')
       setHistoryError('')
       await refreshHistory()
+      toast.success('Plan saved to history')
     } catch (cause) {
-      setHistoryError(cause instanceof Error ? cause.message : 'Unable to save plan history.')
+      const message = cause instanceof Error ? cause.message : 'Unable to save plan history.'
+      setHistoryError(message)
+      toast.error(message)
     }
   }
 
@@ -482,8 +539,11 @@ export default function Home() {
     try {
       await deleteSavedPlan(id)
       await refreshHistory()
+      toast.success('Saved plan deleted')
     } catch (cause) {
-      setHistoryError(cause instanceof Error ? cause.message : 'Unable to delete the saved plan.')
+      const message = cause instanceof Error ? cause.message : 'Unable to delete the saved plan.'
+      setHistoryError(message)
+      toast.error(message)
     }
   }
 
@@ -496,14 +556,20 @@ export default function Home() {
 
   const downloadReport = () => {
     const report = createReport()
-    if (report) downloadFile(report, 'execution-plan-report.html', 'text/html;charset=utf-8')
+    if (report) {
+      downloadFile(report, 'execution-plan-report.html', 'text/html;charset=utf-8')
+      toast.success('HTML report downloaded')
+    }
   }
 
   const printReport = () => {
     const report = createReport()
     if (!report) return
     const reportWindow = window.open('', '_blank')
-    if (!reportWindow) return
+    if (!reportWindow) {
+      toast.error('Unable to open print view', 'Allow pop-ups for this site and try again.')
+      return
+    }
     reportWindow.opener = null
     reportWindow.document.write(report)
     reportWindow.document.close()
@@ -690,7 +756,7 @@ export default function Home() {
                 <button type="button" onClick={() => void removeHistoryPlan(saved.id)} className="border border-tertiary/40 px-3 py-2 text-xs font-medium text-tertiary">Delete</button>
               </div>
             </div>
-          )) : <p className="px-4 py-3 text-sm text-on-surface-variant">No saved plans.</p>}
+          )) : <EmptyState compact title="No saved plans" description="Visualize a plan, add a name, then save it for later comparison." />}
         </div>
       </section>
 
@@ -760,11 +826,7 @@ export default function Home() {
         <div className="p-2">
           {parsedPlan ? (
             <PlanVisualizer plan={parsedPlan} comparison={visualizerComparison} />
-          ) : (
-            <div className="flex h-96 items-center justify-center px-4 text-center text-sm font-serif text-on-surface-variant">
-              No execution plan loaded
-            </div>
-          )}
+          ) : <EmptyState title="No execution plan loaded" description="Paste Oracle plan JSON or DBMS_XPLAN output, then select Visualize Plan." />}
         </div>
       </div>
     </div>

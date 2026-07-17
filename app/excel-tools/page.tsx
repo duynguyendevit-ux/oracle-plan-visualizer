@@ -2,8 +2,34 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
+import { toast } from '@/lib/toast'
 
 type Tool = 'analyzer' | 'formula' | 'diff' | 'calculator'
+
+async function readSpreadsheet(file: File): Promise<any[]> {
+  const isCsv = file.name.toLowerCase().endsWith('.csv')
+  let workbook: XLSX.WorkBook
+
+  if (isCsv) {
+    workbook = XLSX.read(await file.text(), { type: 'string' })
+  } else {
+    const data = await file.arrayBuffer()
+    const bytes = new Uint8Array(data)
+    const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b
+    const isOle = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0
+    if (!isZip && !isOle) throw new Error('The selected file is not a valid Excel workbook.')
+    workbook = XLSX.read(data)
+  }
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName || !workbook.Sheets[sheetName]) {
+    throw new Error('The spreadsheet does not contain a readable worksheet.')
+  }
+
+  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName])
+}
 
 export default function ExcelTools() {
   const [activeTool, setActiveTool] = useState<Tool>('analyzer')
@@ -37,6 +63,26 @@ export default function ExcelTools() {
   const [calcPage, setCalcPage] = useState(1)
   const [calcPageSize, setCalcPageSize] = useState(50)
 
+  useToolSession('excel-tools', {
+    activeTool,
+    formulaInput,
+    calcCol1,
+    calcCol2,
+    calcOperation,
+    calcFormat,
+    calcFilter,
+    calcPageSize,
+  }, (saved) => {
+    if (['analyzer', 'formula', 'diff', 'calculator'].includes(saved.activeTool)) setActiveTool(saved.activeTool as Tool)
+    if (typeof saved.formulaInput === 'string') setFormulaInput(saved.formulaInput)
+    if (typeof saved.calcCol1 === 'string') setCalcCol1(saved.calcCol1)
+    if (typeof saved.calcCol2 === 'string') setCalcCol2(saved.calcCol2)
+    if (saved.calcOperation === 'add' || saved.calcOperation === 'subtract') setCalcOperation(saved.calcOperation)
+    if (saved.calcFormat === 'number' || saved.calcFormat === 'currency' || saved.calcFormat === 'percentage') setCalcFormat(saved.calcFormat)
+    if (typeof saved.calcFilter === 'string') setCalcFilter(saved.calcFilter)
+    if (typeof saved.calcPageSize === 'number') setCalcPageSize(saved.calcPageSize)
+  })
+
   // Data Analyzer functions
   const handleAnalyzerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -69,25 +115,15 @@ export default function ExcelTools() {
 
   const processAnalyzerFile = async (file: File) => {
     setAnalyzerFile(file)
-    
-    let jsonData: any[]
-    
-    if (file.name.endsWith('.csv')) {
-      // Handle CSV
-      const text = await file.text()
-      const workbook = XLSX.read(text, { type: 'string' })
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      jsonData = XLSX.utils.sheet_to_json(worksheet)
-    } else {
-      // Handle Excel
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data)
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+    try {
+      const jsonData = await readSpreadsheet(file)
+      setAnalyzerData(jsonData)
+      analyzeData(jsonData)
+      toast.success('Spreadsheet analyzed', `${jsonData.length.toLocaleString()} rows loaded.`)
+    } catch (cause) {
+      toast.error('Unable to analyze spreadsheet', cause instanceof Error ? cause.message : undefined)
     }
-    
-    setAnalyzerData(jsonData)
-    analyzeData(jsonData)
   }
   
   const analyzeData = (data: any[]) => {
@@ -137,6 +173,7 @@ export default function ExcelTools() {
           const numbers = match[1].split(',').map(n => parseFloat(n.trim()))
           const result = numbers.reduce((a, b) => a + b, 0)
           setFormulaResult(`Result: ${result}`)
+          toast.success('Formula evaluated')
           return
         }
       }
@@ -148,6 +185,7 @@ export default function ExcelTools() {
           const numbers = match[1].split(',').map(n => parseFloat(n.trim()))
           const result = numbers.reduce((a, b) => a + b, 0) / numbers.length
           setFormulaResult(`Result: ${result.toFixed(2)}`)
+          toast.success('Formula evaluated')
           return
         }
       }
@@ -155,64 +193,48 @@ export default function ExcelTools() {
       // Handle simple math
       const result = eval(formula)
       setFormulaResult(`Result: ${result}`)
+      toast.success('Formula evaluated')
     } catch (err: any) {
       setFormulaError(err.message)
+      toast.error('Formula evaluation failed', err.message)
     }
   }
   
   // Diff Viewer functions
   const handleDiffCompare = async () => {
     if (!diffFile1 || !diffFile2) return
-    
-    let json1: any[], json2: any[]
-    
-    // Read file 1
-    if (diffFile1.name.endsWith('.csv')) {
-      const text1 = await diffFile1.text()
-      const wb1 = XLSX.read(text1, { type: 'string' })
-      json1 = XLSX.utils.sheet_to_json(wb1.Sheets[wb1.SheetNames[0]])
-    } else {
-      const data1 = await diffFile1.arrayBuffer()
-      const wb1 = XLSX.read(data1)
-      json1 = XLSX.utils.sheet_to_json(wb1.Sheets[wb1.SheetNames[0]])
-    }
-    
-    // Read file 2
-    if (diffFile2.name.endsWith('.csv')) {
-      const text2 = await diffFile2.text()
-      const wb2 = XLSX.read(text2, { type: 'string' })
-      json2 = XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]])
-    } else {
-      const data2 = await diffFile2.arrayBuffer()
-      const wb2 = XLSX.read(data2)
-      json2 = XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]])
-    }
-    
-    const differences = {
-      rowCountDiff: json1.length - json2.length,
-      added: json2.length > json1.length ? json2.slice(json1.length) : [],
-      removed: json1.length > json2.length ? json1.slice(json2.length) : [],
-      modified: [] as any[]
-    }
-    
-    const minLength = Math.min(json1.length, json2.length)
-    for (let i = 0; i < minLength; i++) {
-      const row1 = json1[i] as any
-      const row2 = json2[i] as any
-      const diff: any = { row: i + 1, changes: {} }
-      
-      Object.keys(row1).forEach(key => {
-        if (row1[key] !== row2[key]) {
-          diff.changes[key] = { old: row1[key], new: row2[key] }
-        }
-      })
-      
-      if (Object.keys(diff.changes).length > 0) {
-        differences.modified.push(diff)
+
+    try {
+      const [json1, json2] = await Promise.all([readSpreadsheet(diffFile1), readSpreadsheet(diffFile2)])
+      const differences = {
+        rowCountDiff: json1.length - json2.length,
+        added: json2.length > json1.length ? json2.slice(json1.length) : [],
+        removed: json1.length > json2.length ? json1.slice(json2.length) : [],
+        modified: [] as any[]
       }
+
+      const minLength = Math.min(json1.length, json2.length)
+      for (let i = 0; i < minLength; i++) {
+        const row1 = json1[i] as any
+        const row2 = json2[i] as any
+        const diff: any = { row: i + 1, changes: {} }
+
+        Object.keys(row1).forEach(key => {
+          if (row1[key] !== row2[key]) {
+            diff.changes[key] = { old: row1[key], new: row2[key] }
+          }
+        })
+
+        if (Object.keys(diff.changes).length > 0) {
+          differences.modified.push(diff)
+        }
+      }
+
+      setDiffResult(differences)
+      toast.success('Spreadsheets compared')
+    } catch (cause) {
+      toast.error('Unable to compare spreadsheets', cause instanceof Error ? cause.message : undefined)
     }
-    
-    setDiffResult(differences)
   }
 
   // Calculator functions
@@ -222,22 +244,13 @@ export default function ExcelTools() {
 
     setCalcFile(file)
 
-    let jsonData: any[]
-    if (file.name.endsWith('.csv')) {
-      const text = await file.text()
-      const workbook = XLSX.read(text, { type: 'string' })
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      jsonData = XLSX.utils.sheet_to_json(worksheet)
-    } else {
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data)
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      jsonData = XLSX.utils.sheet_to_json(worksheet)
-    }
-
-    setCalcData(jsonData)
-    if (jsonData.length > 0) {
-      setCalcColumns(Object.keys(jsonData[0]))
+    try {
+      const jsonData = await readSpreadsheet(file)
+      setCalcData(jsonData)
+      setCalcColumns(jsonData.length > 0 ? Object.keys(jsonData[0]) : [])
+      toast.success('Calculator data loaded', `${jsonData.length.toLocaleString()} rows available.`)
+    } catch (cause) {
+      toast.error('Unable to load calculator data', cause instanceof Error ? cause.message : undefined)
     }
   }
 
@@ -333,6 +346,7 @@ export default function ExcelTools() {
     })
 
     setCalcResult(results)
+    toast.success('Columns calculated', `${results.length.toLocaleString()} rows processed.`)
   }
 
   const exportCalcResults = () => {
@@ -340,6 +354,7 @@ export default function ExcelTools() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Results')
     XLSX.writeFile(wb, `calculation-${Date.now()}.xlsx`)
+    toast.success('Calculation workbook downloaded')
   }
 
   return (
@@ -446,7 +461,7 @@ export default function ExcelTools() {
             </div>
           </div>
           
-          {analyzerStats && (
+          {analyzerStats ? (
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-on-surface">Analysis Results</h3>
@@ -460,6 +475,7 @@ export default function ExcelTools() {
                     a.download = `analysis-${Date.now()}.json`
                     a.click()
                     URL.revokeObjectURL(url)
+                    toast.success('Analysis JSON downloaded')
                   }}
                   className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors text-sm flex items-center gap-2 active:scale-95"
                 >
@@ -507,7 +523,7 @@ export default function ExcelTools() {
                 </div>
               </div>
             </div>
-          )}
+          ) : <EmptyState compact title="No spreadsheet analyzed" description="Drop an Excel or CSV file above to inspect rows, columns, nulls, and numeric ranges." />}
         </div>
       )}
 
@@ -548,6 +564,8 @@ export default function ExcelTools() {
               <p className="text-red-800 font-medium">Error: {formulaError}</p>
             </div>
           )}
+
+          {!formulaResult && !formulaError && <EmptyState compact title="No formula result" description="Enter a supported formula and select Test Formula." />}
           
           <div className="mt-6 bg-surface-container rounded-lg p-4">
             <h3 className="font-semibold text-on-surface mb-2">Supported Functions</h3>
@@ -599,7 +617,7 @@ export default function ExcelTools() {
             Compare Files
           </button>
           
-          {diffResult && (
+          {diffResult ? (
             <div className="mt-6 space-y-4">
               <div className="bg-surface-container rounded-lg p-4">
                 <h3 className="font-semibold text-on-surface mb-2">Summary</h3>
@@ -630,7 +648,7 @@ export default function ExcelTools() {
                 </div>
               )}
             </div>
-          )}
+          ) : <EmptyState compact title="No comparison yet" description="Select an original and modified spreadsheet, then compare them." />}
         </div>
       )}
 
@@ -853,6 +871,7 @@ export default function ExcelTools() {
               })()}
             </div>
           )}
+          {calcColumns.length === 0 && <EmptyState compact title="No calculator data" description="Upload an Excel or CSV file to choose columns and calculate results." />}
         </div>
       )}
     </div>

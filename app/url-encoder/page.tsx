@@ -1,9 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText } from '@/lib/toast'
 
 export default function URLEncoder() {
   const [input, setInput] = useState('')
+
+  useToolSession('url-encoder', { input }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+  })
 
   const encodeURL = (text: string) => {
     try {
@@ -44,10 +50,6 @@ export default function URLEncoder() {
     { name: 'Base64 Decode', fn: decodeBase64, example: 'hello world' },
   ]
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-  }
-
   const loadSample = () => {
     setInput('hello world & special chars: @#$%')
   }
@@ -83,7 +85,7 @@ export default function URLEncoder() {
               <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
                 <h3 className="text-sm font-serif font-semibold text-warm-800">{name}</h3>
                 <button
-                  onClick={() => copyToClipboard(result)}
+                  onClick={() => void copyText(result, `${name} copied`)}
                   className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors"
                 >
                   Copy

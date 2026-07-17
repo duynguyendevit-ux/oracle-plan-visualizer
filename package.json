@@ -4,10 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "setup:rancher": "node scripts/setup-rancher-log.mjs",
+    "dev:rancher": "node scripts/rancher-log-agent.mjs --next",
+    "rancher-agent": "node scripts/rancher-log-agent.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:agent": "node --test tests/rancher-log-agent.test.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

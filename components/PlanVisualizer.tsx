@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
+import { toast } from '@/lib/toast'
 import {
   flattenPlan,
   getBottlenecks,
@@ -688,6 +689,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
       link.download = 'execution-plan.svg'
       link.click()
       URL.revokeObjectURL(svgUrl)
+      toast.success('Execution plan SVG downloaded')
       return
     }
 
@@ -709,6 +711,7 @@ export default function PlanVisualizer({ plan, comparison }: Props) {
         link.download = 'execution-plan.png'
         link.click()
         URL.revokeObjectURL(url)
+        toast.success('Execution plan PNG downloaded')
       })
       URL.revokeObjectURL(svgUrl)
     }

@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { parseActivityDiagram, generateSVG } from './diagram-generator'
 import { generateDrawioXML } from './xml-generator'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText, toast } from '@/lib/toast'
 
 export default function ActivityDiagram() {
   const [input, setInput] = useState(`lane Thread 1
@@ -34,14 +37,21 @@ Thread 2: dispatch command -> Thread 3: process command`)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
 
+  useToolSession('activity-diagram', { input }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+  })
+
   const generateDiagram = () => {
     try {
       setError('')
       const data = parseActivityDiagram(input)
       const svgString = generateSVG(data, 800, 600)
       setSvg(svgString)
+      toast.success('Diagram generated')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate diagram')
+      const message = err instanceof Error ? err.message : 'Failed to generate diagram'
+      setError(message)
+      toast.error('Unable to generate diagram', message)
       console.error('Error generating diagram:', err)
     }
   }
@@ -55,6 +65,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
     a.download = 'activity-diagram.svg'
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('SVG downloaded')
   }
 
   const exportPNG = () => {
@@ -77,6 +88,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
           a.download = 'activity-diagram.png'
           a.click()
           URL.revokeObjectURL(pngUrl)
+          toast.success('PNG downloaded')
         }
       })
       URL.revokeObjectURL(url)
@@ -95,21 +107,22 @@ Thread 2: dispatch command -> Thread 3: process command`)
     a.download = 'activity-diagram.xml'
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Draw.io XML downloaded')
   }
 
   const copyInput = () => {
-    navigator.clipboard.writeText(input)
+    void copyText(input, 'Definition copied')
   }
 
   const copySVG = () => {
     if (!svg) return
-    navigator.clipboard.writeText(svg)
+    void copyText(svg, 'SVG copied')
   }
 
   const copyXML = () => {
     if (!input) return
     const xml = generateDrawioXML(input)
-    navigator.clipboard.writeText(xml)
+    void copyText(xml, 'Draw.io XML copied')
   }
 
   return (
@@ -243,11 +256,7 @@ Thread 2: dispatch command -> Thread 3: process command`)
             <div className="bg-surface-container-lowest dark:bg-dark-surface-container-lowest border border-outline-variant/60 dark:border-dark-outline-variant rounded-md p-4 min-h-[600px] overflow-auto">
               {svg ? (
                 <div dangerouslySetInnerHTML={{ __html: svg }} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-on-surface-variant dark:text-dark-on-secondary-container">
-                  Click "Generate" to create diagram
-                </div>
-              )}
+              ) : <EmptyState title="No diagram generated" description="Edit the definition, then select Generate to render the activity diagram." />}
             </div>
           </motion.div>
         </div>

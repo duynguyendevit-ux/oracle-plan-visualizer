@@ -1,9 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText } from '@/lib/toast'
 
 export default function CaseConverter() {
   const [input, setInput] = useState('')
+
+  useToolSession('case-converter', { input }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+  })
 
   const toCamelCase = (str: string) => {
     return str
@@ -63,10 +69,6 @@ export default function CaseConverter() {
     { name: 'Title Case', fn: toTitleCase, example: 'My Variable Name' },
   ]
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-  }
-
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden mb-4">
@@ -92,7 +94,7 @@ export default function CaseConverter() {
               <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
                 <h3 className="text-sm font-serif font-semibold text-warm-800">{name}</h3>
                 <button
-                  onClick={() => copyToClipboard(converted)}
+                  onClick={() => void copyText(converted, `${name} copied`)}
                   className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors"
                 >
                   Copy

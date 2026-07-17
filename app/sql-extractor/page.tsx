@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useCallback, useRef, useMemo } from 'react'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText, toast } from '@/lib/toast'
 
 // Inline SQL extraction logic
 function extractSQL(input: string): { sql: string; lines: number } {
@@ -104,6 +107,14 @@ export default function SQLExtractor() {
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  useToolSession('sql-extractor', { input, output, stats }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+    if (typeof saved.output === 'string') setOutput(saved.output)
+    if (saved.stats && typeof saved.stats.lines === 'number' && typeof saved.stats.size === 'number' && typeof saved.stats.time === 'number') {
+      setStats(saved.stats)
+    }
+  }, { maxBytes: 1_000_000 })
+
   const handleExtractSQL = useCallback(() => {
     if (!input.trim()) return
     
@@ -184,7 +195,7 @@ export default function SQLExtractor() {
     if (!file) return
 
     if (file.size > 50 * 1024 * 1024) {
-      alert('File too large! Maximum size is 50MB')
+      toast.error('File is too large', 'Maximum supported size is 50 MB.')
       return
     }
 
@@ -208,7 +219,7 @@ export default function SQLExtractor() {
     }
 
     reader.onerror = () => {
-      alert('Error reading file')
+      toast.error('Unable to read file')
       setIsProcessing(false)
     }
 
@@ -244,7 +255,7 @@ export default function SQLExtractor() {
   }, [readFile])
 
   const copyToClipboard = useCallback(() => {
-    navigator.clipboard.writeText(output)
+    void copyText(output, 'SQL copied')
   }, [output])
 
   const downloadSQL = useCallback(() => {
@@ -255,6 +266,7 @@ export default function SQLExtractor() {
     a.download = `extracted-sql-${Date.now()}.sql`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('SQL file downloaded')
   }, [output])
 
   // Show file size warning
@@ -320,7 +332,11 @@ export default function SQLExtractor() {
                 Upload File
               </button>
               <button
-                onClick={() => setInput('')}
+                onClick={() => {
+                  setInput('')
+                  setOutput('')
+                  setStats({ lines: 0, size: 0, time: 0 })
+                }}
                 className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 font-medium transition-colors"
               >
                 Clear
@@ -437,17 +453,18 @@ export default function SQLExtractor() {
           </div>
           
           <div className="p-4">
-            <textarea
-              value={output}
-              readOnly
-              placeholder="Extracted SQL will appear here..."
-              className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface placeholder-on-surface-variant/50"
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              style={{ willChange: 'scroll-position' }}
-            />
+            {output ? (
+              <textarea
+                value={output}
+                readOnly
+                aria-label="Extracted SQL output"
+                className="w-full h-96 p-3 border border-outline-variant/15 rounded-lg bg-surface-container-lowest font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-on-surface"
+                spellCheck={false}
+                style={{ willChange: 'scroll-position' }}
+              />
+            ) : (
+              <EmptyState title="No SQL extracted yet" description="Paste a log or drop a file, then run Extract SQL to populate this panel." />
+            )}
           </div>
         </div>
       </div>

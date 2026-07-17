@@ -2,9 +2,15 @@
 
 import { useState } from 'react'
 import crypto from 'crypto'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText } from '@/lib/toast'
 
 export default function HashGenerator() {
   const [input, setInput] = useState('')
+
+  useToolSession('hash-generator', { input }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+  })
 
   const generateHash = (algorithm: string, text: string) => {
     if (!text) return ''
@@ -22,10 +28,6 @@ export default function HashGenerator() {
     { name: 'SHA-384', algorithm: 'sha384', description: '384-bit hash (96 hex chars)' },
     { name: 'SHA-512', algorithm: 'sha512', description: '512-bit hash (128 hex chars)' },
   ]
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-  }
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -55,7 +57,7 @@ export default function HashGenerator() {
                   <p className="text-xs text-warm-600 mt-0.5">{description}</p>
                 </div>
                 <button
-                  onClick={() => copyToClipboard(hash)}
+                  onClick={() => void copyText(hash, `${name} hash copied`)}
                   disabled={!hash}
                   className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >

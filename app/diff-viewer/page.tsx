@@ -1,10 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
 
 export default function DiffViewer() {
   const [leftText, setLeftText] = useState('')
   const [rightText, setRightText] = useState('')
+
+  useToolSession('diff-viewer', { leftText, rightText }, (saved) => {
+    if (typeof saved.leftText === 'string') setLeftText(saved.leftText)
+    if (typeof saved.rightText === 'string') setRightText(saved.rightText)
+  })
 
   const computeDiff = () => {
     const leftLines = leftText.split('\n')
@@ -31,6 +38,7 @@ export default function DiffViewer() {
   }
 
   const diffs = computeDiff()
+  const hasInput = leftText.length > 0 || rightText.length > 0
 
   const loadSample = () => {
     setLeftText(`function hello() {
@@ -96,7 +104,9 @@ export default function DiffViewer() {
         </div>
         
         <div className="p-4">
-          <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+          {!hasInput ? (
+            <EmptyState compact title="Nothing to compare" description="Enter or load text in both editors to see line-by-line differences." />
+          ) : <div className="grid grid-cols-2 gap-2 font-mono text-sm">
             {diffs.map((diff, idx) => {
               const bgColor = 
                 diff.type === 'equal' ? 'bg-white' :
@@ -124,7 +134,7 @@ export default function DiffViewer() {
                 </div>
               )
             })}
-          </div>
+          </div>}
         </div>
       </div>
     </div>

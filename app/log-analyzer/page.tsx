@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import EmptyState from '@/components/EmptyState'
+import { useToolSession } from '@/hooks/useToolSession'
+import { copyText, toast } from '@/lib/toast'
 
 interface LogEntry {
   line: number
@@ -9,6 +12,29 @@ interface LogEntry {
   message: string
   stackTrace?: string[]
 }
+
+interface RancherPod {
+  namespace: string
+  name: string
+  phase: string
+  ready: boolean
+  restarts: number
+  containers: string[]
+}
+
+interface RancherAvailability {
+  agentAvailable?: boolean
+  available: boolean
+  kubectlPath?: string
+  version?: string
+  configuredKubeconfigPath?: string
+  reason?: string
+}
+
+type LogSource = 'file' | 'rancher'
+type RancherAction = 'check-environment' | 'install-kubectl' | 'contexts' | 'namespaces' | 'pods' | 'logs' | null
+
+const RANCHER_LOG_AGENT_URL = process.env.NEXT_PUBLIC_RANCHER_LOG_AGENT_URL || 'http://127.0.0.1:3210/rancher-logs'
 
 export default function LogAnalyzer() {
   const [input, setInput] = useState('')
@@ -22,8 +48,71 @@ export default function LogAnalyzer() {
   const [analyzeProgress, setAnalyzeProgress] = useState(0)
   const [utcPlus7, setUtcPlus7] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [logSource, setLogSource] = useState<LogSource>('file')
+  const [rancherAvailability, setRancherAvailability] = useState<RancherAvailability | null>(null)
+  const [rancherAction, setRancherAction] = useState<RancherAction>(null)
+  const [kubeconfig, setKubeconfig] = useState('')
+  const [kubeconfigName, setKubeconfigName] = useState('')
+  const [configuredKubeconfigPath, setConfiguredKubeconfigPath] = useState('')
+  const [contexts, setContexts] = useState<string[]>([])
+  const [selectedContext, setSelectedContext] = useState('')
+  const [namespaces, setNamespaces] = useState<string[]>([])
+  const [namespace, setNamespace] = useState('')
+  const [pods, setPods] = useState<RancherPod[]>([])
+  const [selectedPodKey, setSelectedPodKey] = useState('')
+  const [selectedContainer, setSelectedContainer] = useState('')
+  const [tailLines, setTailLines] = useState(500)
+  const [since, setSince] = useState('')
+  const [previousContainer, setPreviousContainer] = useState(false)
+  const rancherConfigGeneration = useRef(0)
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+  const selectedPod = pods.find((pod) => `${pod.namespace}/${pod.name}` === selectedPodKey)
+
+  useToolSession('log-analyzer', {
+    input: input.length <= 400_000 ? input : '',
+    searchTerm,
+    filterLevel,
+    utcPlus7,
+    logSource,
+    selectedContext,
+    namespace,
+    selectedPodKey,
+    selectedContainer,
+    tailLines,
+    since,
+    previousContainer,
+  }, (saved) => {
+    if (typeof saved.input === 'string') setInput(saved.input)
+    if (typeof saved.searchTerm === 'string') setSearchTerm(saved.searchTerm)
+    if (typeof saved.filterLevel === 'string') setFilterLevel(saved.filterLevel)
+    if (typeof saved.utcPlus7 === 'boolean') setUtcPlus7(saved.utcPlus7)
+    if (saved.logSource === 'file' || saved.logSource === 'rancher') setLogSource(saved.logSource)
+    if (typeof saved.selectedContext === 'string') setSelectedContext(saved.selectedContext)
+    if (typeof saved.namespace === 'string') setNamespace(saved.namespace)
+    if (typeof saved.selectedPodKey === 'string') setSelectedPodKey(saved.selectedPodKey)
+    if (typeof saved.selectedContainer === 'string') setSelectedContainer(saved.selectedContainer)
+    if (typeof saved.tailLines === 'number') setTailLines(saved.tailLines)
+    if (typeof saved.since === 'string') setSince(saved.since)
+    if (typeof saved.previousContainer === 'boolean') setPreviousContainer(saved.previousContainer)
+  })
+
+  const showError = (message: string) => {
+    setError(message)
+    toast.error(message)
+  }
+
+  useEffect(() => {
+    fetch(RANCHER_LOG_AGENT_URL, { cache: 'no-store' })
+      .then(async (response) => response.json() as Promise<RancherAvailability>)
+      .then((availability) => {
+        setRancherAvailability(availability)
+        const configuredPath = availability.configuredKubeconfigPath ?? ''
+        setConfiguredKubeconfigPath(configuredPath)
+        if (configuredPath) setKubeconfigName(configuredPath)
+      })
+      .catch(() => setRancherAvailability({ agentAvailable: false, available: false, reason: 'Start the local Rancher agent with npm run rancher-agent.' }))
+  }, [])
 
   // Render single log entry
   const renderLogEntry = (entry: LogEntry, idx: number) => (
@@ -73,8 +162,8 @@ export default function LogAnalyzer() {
         }
       }
       
-      // Ctrl+K or Cmd+K: Focus search
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      // Slash focuses search when the cursor is not already in an editor.
+      if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
         e.preventDefault()
         const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
         searchInput?.focus()
@@ -94,7 +183,7 @@ export default function LogAnalyzer() {
 
   const processFile = (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File too large! Maximum size is 50MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+      showError(`File too large! Maximum size is 50MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
       return
     }
 
@@ -122,7 +211,7 @@ export default function LogAnalyzer() {
     }
     
     reader.onerror = () => {
-      setError('Error reading file')
+      showError('Error reading file')
       setUploadProgress(0)
     }
     
@@ -152,7 +241,7 @@ export default function LogAnalyzer() {
     }
   }
 
-  const analyzeLogs = () => {
+  const analyzeLogs = (sourceInput = input) => {
     setLoading(true)
     setError('')
     setAnalyzeProgress(1) // Start at 1% for visibility
@@ -160,7 +249,7 @@ export default function LogAnalyzer() {
     // Use setTimeout to allow UI to update
     setTimeout(() => {
       try {
-        const lines = input.split('\n')
+        const lines = sourceInput.split('\n')
         const entries: LogEntry[] = []
         let currentEntry: LogEntry | null = null
         
@@ -255,10 +344,11 @@ export default function LogAnalyzer() {
           ...levels,
           filtered: filtered.length
         })
+        toast.success('Log analysis complete', `${filtered.length.toLocaleString()} matching entries.`)
         setAnalyzeProgress(100)
         setTimeout(() => setAnalyzeProgress(0), 1000)
       } catch (err) {
-        setError('Error parsing logs: ' + (err as Error).message)
+        showError('Error parsing logs: ' + (err as Error).message)
         setAnalyzeProgress(0)
       } finally {
         setLoading(false)
@@ -273,6 +363,197 @@ export default function LogAnalyzer() {
 2026-04-06T04:56:28.541Z INFO  72378 --- [nio-8088-exec-1] c.e.service.EventService                  : Processing event batch: 20 items
 2026-04-06T04:56:28.542Z DEBUG 72378 --- [nio-8088-exec-1] o.h.SQL                                   : select e1_0.event_id from events e1_0`
     setInput(sample)
+  }
+
+  const handleKubeconfigUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 1024 * 1024) {
+      showError('Kubeconfig is larger than 1 MB.')
+      return
+    }
+
+    try {
+      const content = await file.text()
+      rancherConfigGeneration.current += 1
+      setKubeconfig(content)
+      setKubeconfigName(file.name)
+      setContexts([])
+      setSelectedContext('')
+      setNamespaces([])
+      setNamespace('')
+      setPods([])
+      setSelectedPodKey('')
+      setSelectedContainer('')
+      setError('')
+    } catch {
+      showError('Unable to read kubeconfig file.')
+    }
+  }
+
+  const callRancherApi = async <T,>(action: Exclude<RancherAction, null>, payload: Record<string, unknown> = {}) => {
+    const response = await fetch(RANCHER_LOG_AGENT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, kubeconfig, ...payload }),
+    })
+    const data = await response.json() as T & { error?: string; reason?: string }
+    if (!response.ok) throw new Error(data.error || data.reason || 'Rancher log request failed.')
+    return data
+  }
+
+  const applyRancherAvailability = (availability: RancherAvailability) => {
+    setRancherAvailability(availability)
+    const configuredPath = availability.configuredKubeconfigPath ?? ''
+    setConfiguredKubeconfigPath(configuredPath)
+    if (!kubeconfig && configuredPath) setKubeconfigName(configuredPath)
+  }
+
+  const checkRancherEnvironment = async () => {
+    setRancherAction('check-environment')
+    setError('')
+    try {
+      const response = await fetch(RANCHER_LOG_AGENT_URL, { cache: 'no-store' })
+      const availability = await response.json() as RancherAvailability
+      if (!response.ok) throw new Error(availability.reason || 'Unable to check the local environment.')
+      applyRancherAvailability(availability)
+    } catch (cause) {
+      setRancherAvailability({ agentAvailable: false, available: false, reason: 'Start the local Rancher agent with npm run rancher-agent.' })
+      showError(cause instanceof Error ? cause.message : 'Unable to check the local environment.')
+    } finally {
+      setRancherAction(null)
+    }
+  }
+
+  const installKubectl = async () => {
+    setRancherAction('install-kubectl')
+    setError('')
+    try {
+      const availability = await callRancherApi<RancherAvailability>('install-kubectl')
+      applyRancherAvailability(availability)
+    } catch (cause) {
+      showError(cause instanceof Error ? cause.message : 'Unable to install kubectl.')
+    } finally {
+      setRancherAction(null)
+    }
+  }
+
+  const loadRancherContexts = async () => {
+    const generation = rancherConfigGeneration.current
+    setRancherAction('contexts')
+    setError('')
+    try {
+      const data = await callRancherApi<{ contexts: string[] }>('contexts')
+      if (generation !== rancherConfigGeneration.current) return
+      setContexts(data.contexts)
+      setSelectedContext((current) => current || data.contexts[0] || '')
+      setNamespaces([])
+      setNamespace('')
+      setPods([])
+      setSelectedPodKey('')
+      setSelectedContainer('')
+    } catch (cause) {
+      if (generation !== rancherConfigGeneration.current) return
+      showError(cause instanceof Error ? cause.message : 'Unable to load kubeconfig contexts.')
+    } finally {
+      setRancherAction(null)
+    }
+  }
+
+  const handleContextSelection = (context: string) => {
+    setSelectedContext(context)
+    setNamespaces([])
+    setNamespace('')
+    setPods([])
+    setSelectedPodKey('')
+    setSelectedContainer('')
+  }
+
+  const loadRancherNamespaces = async () => {
+    const generation = rancherConfigGeneration.current
+    setRancherAction('namespaces')
+    setError('')
+    try {
+      const data = await callRancherApi<{ namespaces: string[] }>('namespaces', {
+        context: selectedContext,
+      })
+      if (generation !== rancherConfigGeneration.current) return
+      setNamespaces(data.namespaces)
+      setNamespace((current) => data.namespaces.includes(current) ? current : data.namespaces[0] ?? '')
+      setPods([])
+      setSelectedPodKey('')
+      setSelectedContainer('')
+      if (data.namespaces.length === 0) showError('No namespaces were found.')
+    } catch (cause) {
+      if (generation !== rancherConfigGeneration.current) return
+      showError(cause instanceof Error ? cause.message : 'Unable to list namespaces.')
+    } finally {
+      setRancherAction(null)
+    }
+  }
+
+  const handleNamespaceSelection = (value: string) => {
+    setNamespace(value)
+    setPods([])
+    setSelectedPodKey('')
+    setSelectedContainer('')
+  }
+
+  const loadRancherPods = async () => {
+    const generation = rancherConfigGeneration.current
+    setRancherAction('pods')
+    setError('')
+    try {
+      const data = await callRancherApi<{ pods: RancherPod[] }>('pods', {
+        context: selectedContext,
+        namespace,
+      })
+      if (generation !== rancherConfigGeneration.current) return
+      setPods(data.pods)
+      const rememberedPod = data.pods.find((pod) => `${pod.namespace}/${pod.name}` === selectedPodKey)
+      const nextPod = rememberedPod ?? data.pods[0]
+      setSelectedPodKey(nextPod ? `${nextPod.namespace}/${nextPod.name}` : '')
+      setSelectedContainer((current) => nextPod?.containers.includes(current) ? current : nextPod?.containers[0] ?? '')
+      if (data.pods.length === 0) showError('No pods were found in this namespace.')
+    } catch (cause) {
+      if (generation !== rancherConfigGeneration.current) return
+      showError(cause instanceof Error ? cause.message : 'Unable to list pods.')
+    } finally {
+      setRancherAction(null)
+    }
+  }
+
+  const handlePodSelection = (podKey: string) => {
+    setSelectedPodKey(podKey)
+    const pod = pods.find((item) => `${item.namespace}/${item.name}` === podKey)
+    setSelectedContainer(pod?.containers[0] ?? '')
+  }
+
+  const fetchRancherLogs = async () => {
+    if (!selectedPod) return
+    const generation = rancherConfigGeneration.current
+    setRancherAction('logs')
+    setError('')
+    try {
+      const data = await callRancherApi<{ logs: string }>('logs', {
+        context: selectedContext,
+        namespace: selectedPod.namespace,
+        pod: selectedPod.name,
+        container: selectedContainer,
+        tail: tailLines,
+        since,
+        previous: previousContainer,
+      })
+      if (generation !== rancherConfigGeneration.current) return
+      setInput(data.logs)
+      analyzeLogs(data.logs)
+      toast.success('Pod logs loaded')
+    } catch (cause) {
+      if (generation !== rancherConfigGeneration.current) return
+      showError(cause instanceof Error ? cause.message : 'Unable to retrieve pod logs.')
+    } finally {
+      setRancherAction(null)
+    }
   }
 
   const exportResults = () => {
@@ -291,6 +572,7 @@ export default function LogAnalyzer() {
     a.download = `log-analysis-${new Date().toISOString().slice(0, 10)}.txt`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Log analysis downloaded')
   }
 
   const copyEntry = (entry: LogEntry) => {
@@ -299,7 +581,7 @@ export default function LogAnalyzer() {
     if (entry.stackTrace && entry.stackTrace.length > 0) {
       text += '\n' + entry.stackTrace.join('\n')
     }
-    navigator.clipboard.writeText(text)
+    void copyText(text, 'Log entry copied')
   }
 
   const convertToUTC7 = (timestamp: string): string => {
@@ -327,12 +609,25 @@ export default function LogAnalyzer() {
   }
 
   const clearAll = () => {
+    rancherConfigGeneration.current += 1
     setInput('')
     setSearchTerm('')
     setFilterLevel('ALL')
     setResults([])
     setStats(null)
     setError('')
+    setKubeconfig('')
+    setKubeconfigName(configuredKubeconfigPath)
+    setContexts([])
+    setSelectedContext('')
+    setNamespaces([])
+    setNamespace('')
+    setPods([])
+    setSelectedPodKey('')
+    setSelectedContainer('')
+    setTailLines(500)
+    setSince('')
+    setPreviousContainer(false)
   }
 
   return (
@@ -374,19 +669,41 @@ export default function LogAnalyzer() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(360px,0.72fr)_minmax(0,1.28fr)] xl:grid-cols-[minmax(420px,0.68fr)_minmax(0,1.32fr)] gap-4 min-h-[600px] lg:h-[calc(100vh-200px)]">
         {/* Input Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
-          <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex justify-between items-center">
-            <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Log File</h3>
-            <button
-              onClick={loadSample}
-              className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
-            >
-              Load Sample
-            </button>
+          <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex flex-wrap justify-between items-center gap-2">
+            <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Log Input</h3>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex border border-outline-variant" role="group" aria-label="Log source">
+                <button
+                  type="button"
+                  onClick={() => setLogSource('file')}
+                  aria-pressed={logSource === 'file'}
+                  className={`h-8 px-3 text-xs font-semibold ${logSource === 'file' ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container'}`}
+                >
+                  File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLogSource('rancher')}
+                  aria-pressed={logSource === 'rancher'}
+                  className={`h-8 border-l border-outline-variant px-3 text-xs font-semibold ${logSource === 'rancher' ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container'}`}
+                >
+                  Rancher
+                </button>
+              </div>
+              {logSource === 'file' && (
+                <button
+                  onClick={loadSample}
+                  className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
+                >
+                  Load Sample
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="p-4">
             {error && (
-              <div className="mb-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm">
+              <div className="mb-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm" role="alert" aria-live="assertive">
                 <span className="mr-2">⚠</span>{error}
               </div>
             )}
@@ -421,58 +738,220 @@ export default function LogAnalyzer() {
               </div>
             )}
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-warm-700 mb-2">
-                Upload Log File (Max 50MB)
-              </label>
-              
-              {/* Drag & Drop Zone */}
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
-                  isDragging
-                    ? 'border-primary bg-primary/5 scale-[1.02]'
-                    : 'border-warm-300 hover:border-primary hover:bg-warm-50'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept=".log,.txt,.json"
-                  onChange={handleFileUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-                
-                <div className="pointer-events-none">
-                  <svg
-                    className={`mx-auto h-12 w-12 mb-3 transition-colors ${
-                      isDragging ? 'text-primary' : 'text-warm-400'
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  
-                  <p className={`text-sm font-medium mb-1 ${
-                    isDragging ? 'text-primary' : 'text-warm-700'
-                  }`}>
-                    {isDragging ? 'Drop file here' : 'Drag & drop your log file here'}
-                  </p>
-                  
-                  <p className="text-xs text-warm-500">
-                    or click to browse • .log, .txt, .json • Max 50MB
-                  </p>
+            {logSource === 'file' ? (
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-warm-700 mb-2">
+                  Upload Log File (Max 50MB)
+                </label>
+
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
+                    isDragging
+                      ? 'border-primary bg-primary/5 scale-[1.02]'
+                      : 'border-warm-300 hover:border-primary hover:bg-warm-50'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept=".log,.txt,.json"
+                    onChange={handleFileUpload}
+                    aria-label="Upload log file"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+
+                  <div className="pointer-events-none">
+                    <svg
+                      className={`mx-auto h-12 w-12 mb-3 transition-colors ${
+                        isDragging ? 'text-primary' : 'text-warm-400'
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+
+                    <p className={`text-sm font-medium mb-1 ${
+                      isDragging ? 'text-primary' : 'text-warm-700'
+                    }`}>
+                      {isDragging ? 'Drop file here' : 'Drag & drop your log file here'}
+                    </p>
+
+                    <p className="text-xs text-warm-500">
+                      or click to browse · .log, .txt, .json · Max 50MB
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="mb-3 space-y-3 border border-outline-variant bg-surface-container-lowest p-3" data-testid="rancher-log-config">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant pb-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-on-surface">Kubectl runtime</div>
+                    <div className={`mt-1 text-xs ${rancherAvailability?.available ? 'text-green-600' : 'text-tertiary'}`} role="status" aria-live="polite">
+                      {rancherAvailability === null
+                        ? 'Checking...'
+                        : rancherAvailability.available
+                          ? `${rancherAvailability.kubectlPath}${rancherAvailability.version ? ` · ${rancherAvailability.version}` : ''}`
+                          : rancherAvailability.reason}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void checkRancherEnvironment()}
+                      disabled={rancherAction !== null}
+                      className="h-9 border border-outline-variant bg-surface-container px-3 text-xs font-semibold text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+                    >
+                      {rancherAction === 'check-environment' ? 'Checking...' : 'Check environment'}
+                    </button>
+                    {rancherAvailability?.agentAvailable && !rancherAvailability.available && (
+                      <button
+                        type="button"
+                        onClick={() => void installKubectl()}
+                        disabled={rancherAction !== null}
+                        className="h-9 bg-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        {rancherAction === 'install-kubectl' ? 'Installing...' : 'Install kubectl'}
+                      </button>
+                    )}
+                    <label className={`inline-flex h-9 items-center border border-outline-variant px-3 text-xs font-semibold ${rancherAvailability?.available ? 'cursor-pointer bg-surface-container text-on-surface hover:bg-surface-container-high' : 'cursor-not-allowed opacity-50'}`}>
+                      <input
+                        type="file"
+                        accept=".yaml,.yml"
+                        onChange={handleKubeconfigUpload}
+                        disabled={!rancherAvailability?.available || rancherAction !== null}
+                        aria-label="Select kubeconfig YAML"
+                        className="sr-only"
+                      />
+                      Override config
+                    </label>
+                  </div>
+                </div>
+
+                {kubeconfigName && (
+                  <div className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-green-600" />
+                    <span className="truncate font-mono">{kubeconfigName}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <label>
+                    <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Context</span>
+                    <select
+                      value={selectedContext}
+                      onChange={(event) => handleContextSelection(event.target.value)}
+                      disabled={contexts.length === 0 || rancherAction !== null}
+                      aria-label="Kubernetes context"
+                      className="h-9 w-full px-2 text-sm"
+                    >
+                      {contexts.length === 0 && <option value="">Load contexts first</option>}
+                      {contexts.map((context) => <option key={context} value={context}>{context}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void loadRancherContexts()}
+                    disabled={(!kubeconfig && !configuredKubeconfigPath) || rancherAction !== null || !rancherAvailability?.available}
+                    className="h-9 self-end bg-primary px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rancherAction === 'contexts' ? 'Loading...' : 'Load contexts'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <label>
+                    <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Namespace</span>
+                    <select
+                      value={namespace}
+                      onChange={(event) => handleNamespaceSelection(event.target.value)}
+                      disabled={namespaces.length === 0 || rancherAction !== null}
+                      aria-label="Kubernetes namespace"
+                      className="h-9 w-full px-2 text-sm"
+                    >
+                      {namespaces.length === 0 && <option value="">Load namespaces first</option>}
+                      {namespaces.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void loadRancherNamespaces()}
+                    disabled={!selectedContext || rancherAction !== null || !rancherAvailability?.available}
+                    className="h-9 self-end border border-primary bg-surface-container-lowest px-3 text-xs font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rancherAction === 'namespaces' ? 'Loading...' : 'Load namespaces'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <label>
+                    <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Pod</span>
+                    <select value={selectedPodKey} onChange={(event) => handlePodSelection(event.target.value)} disabled={pods.length === 0 || rancherAction !== null} aria-label="Kubernetes pod" title={selectedPodKey} className="h-9 w-full px-2 pr-8 font-mono text-xs">
+                      {pods.length === 0 && <option value="">Load pods first</option>}
+                      {pods.map((pod) => (
+                        <option key={`${pod.namespace}/${pod.name}`} value={`${pod.namespace}/${pod.name}`}>
+                          {pod.name} · {pod.phase} · restarts {pod.restarts}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void loadRancherPods()}
+                    disabled={!namespace || rancherAction !== null || !rancherAvailability?.available}
+                    className="h-9 self-end border border-primary bg-surface-container-lowest px-3 text-xs font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rancherAction === 'pods' ? 'Loading...' : 'Load pods'}
+                  </button>
+                </div>
+
+                {selectedPod && (
+                  <div className="space-y-2 border-t border-outline-variant pt-3">
+                    <div className="text-xs text-on-surface-variant">
+                      <span className="font-medium text-on-surface">Selected:</span> <span className="font-mono">{selectedPod.namespace}/{selectedPod.name}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <label className="col-span-2 sm:col-span-1">
+                        <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Container</span>
+                        <select value={selectedContainer} onChange={(event) => setSelectedContainer(event.target.value)} disabled={rancherAction !== null} aria-label="Kubernetes container" title={selectedContainer} className="h-9 w-full px-2 pr-8 text-xs">
+                          {(selectedPod?.containers ?? []).map((container) => <option key={container} value={container}>{container}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Tail</span>
+                        <input type="number" min={1} max={5000} value={tailLines} onChange={(event) => setTailLines(Number(event.target.value))} disabled={rancherAction !== null} aria-label="Log tail lines" className="h-9 w-full px-2 text-sm" />
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-xs font-medium uppercase text-on-surface-variant">Since</span>
+                        <input value={since} onChange={(event) => setSince(event.target.value)} disabled={rancherAction !== null} placeholder="30m" aria-label="Log since duration" className="h-9 w-full px-2 text-sm" />
+                      </label>
+                      <label className="flex h-9 items-center gap-2 self-end border border-outline-variant px-2 text-xs text-on-surface">
+                        <input type="checkbox" checked={previousContainer} onChange={(event) => setPreviousContainer(event.target.checked)} disabled={rancherAction !== null} />
+                        Previous
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void fetchRancherLogs()}
+                      disabled={!selectedPod || rancherAction !== null}
+                      className="h-10 w-full bg-primary text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {rancherAction === 'logs' ? 'Fetching logs...' : 'Fetch and analyze logs'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             
             <textarea
               value={input}
@@ -505,7 +984,7 @@ export default function LogAnalyzer() {
             
             <div className="mt-3 flex flex-col sm:flex-row gap-2">
               <button
-                onClick={analyzeLogs}
+                onClick={() => analyzeLogs()}
                 disabled={loading}
                 data-analyze
                 className="flex-1 bg-primary text-white py-3 sm:py-2.5 rounded hover:bg-primary/90 font-semibold transition-colors shadow-warm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
@@ -525,7 +1004,7 @@ export default function LogAnalyzer() {
               
               <button
                 onClick={clearAll}
-                disabled={loading || (!input && results.length === 0)}
+                disabled={loading || (!input && results.length === 0 && !kubeconfig)}
                 className="sm:w-auto w-full px-6 bg-surface-container text-on-surface py-3 sm:py-2.5 rounded hover:bg-surface-container-high font-semibold transition-colors shadow-warm disabled:bg-surface-container disabled:text-on-surface-variant disabled:opacity-100 disabled:cursor-not-allowed dark:bg-dark-surface-container dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high dark:disabled:bg-dark-surface-container dark:disabled:text-dark-on-secondary-container flex items-center justify-center gap-2 active:scale-95"
                 title="Clear all data"
               >
@@ -537,7 +1016,7 @@ export default function LogAnalyzer() {
             </div>
             
             <p className="mt-2 text-xs text-warm-500 text-center hidden sm:block">
-              💡 Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze, <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+K</kbd> to search
+              Tip: Press <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">Ctrl+Enter</kbd> to analyze or <kbd className="px-2 py-1 bg-warm-100 border border-warm-300 rounded text-warm-700 font-mono">/</kbd> to search
             </p>
           </div>
         </div>
@@ -574,9 +1053,7 @@ export default function LogAnalyzer() {
           
           <div className="p-4 overflow-auto h-full">
             {results.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-warm-400">
-                <p className="text-sm font-serif">No logs to display</p>
-              </div>
+              <EmptyState title={stats ? 'No matching logs' : 'No analysis results'} description={stats ? 'Adjust the search term or log level filter, then analyze again.' : 'Paste a log file or fetch pod logs, then select Analyze Logs.'} />
             ) : (
               <div className="space-y-3">
                 {results.map((entry, idx) => renderLogEntry(entry, idx))}

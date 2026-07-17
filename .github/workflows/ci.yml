@@ -35,6 +35,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test Rancher log agent
+        run: npm run test:agent
+
       - name: Run end-to-end tests
         run: npm run test:e2e
 
