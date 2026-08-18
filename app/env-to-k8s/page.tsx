@@ -1,6 +1,8 @@
 'use client'
 
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { sendToolTransfer } from '@/hooks/useToolTransfer'
 import { copyText, toast } from '@/lib/toast'
 
 interface EnvVar {
@@ -220,6 +222,7 @@ function getCurrentLineRemoval(value: string, cursor: number) {
 }
 
 export default function EnvToK8s() {
+  const router = useRouter()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
@@ -299,6 +302,12 @@ export default function EnvToK8s() {
     setInput('')
     setOutput('')
     setClipboardError('')
+  }
+
+  const sendToDiffViewer = () => {
+    if (!output) return
+    sendToolTransfer('diff-viewer', { text: output, label: 'Kubernetes Env YAML' })
+    router.push('/diff-viewer')
   }
 
   const removeCurrentLine = (cursor: number) => {
@@ -475,6 +484,14 @@ export default function EnvToK8s() {
               className="px-3 py-1.5 bg-primary text-white text-sm rounded hover:bg-primary/90 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Copy
+            </button>
+            <button
+              type="button"
+              onClick={sendToDiffViewer}
+              disabled={!output}
+              className="px-3 py-1.5 border border-primary text-primary text-sm rounded hover:bg-primary/10 font-medium transition-colors disabled:opacity-50"
+            >
+              Send to Diff
             </button>
           </div>
 

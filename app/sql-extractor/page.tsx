@@ -1,111 +1,25 @@
 'use client'
 
 import { useState, useCallback, useRef, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import EmptyState from '@/components/EmptyState'
 import { useToolSession } from '@/hooks/useToolSession'
+import { useWorkerRpc } from '@/hooks/useWorkerRpc'
+import { sendToolTransfer, useToolTransfer } from '@/hooks/useToolTransfer'
 import { copyText, toast } from '@/lib/toast'
-
-// Inline SQL extraction logic
-function extractSQL(input: string): { sql: string; lines: number } {
-  const lines = input.split('\n')
-  const sqlLines: string[] = []
-  const bindings: Array<{ index: number; value: string }> = []
-  let inSQL = false
-  let lineCount = 0
-
-  lines.forEach(line => {
-    const bindMatch = line.match(/binding parameter \[(\d+)\] as \[.*?\] - \[(.+?)\]/)
-    if (bindMatch) {
-      bindings.push({ index: parseInt(bindMatch[1]), value: bindMatch[2] })
-      return
-    }
-
-    let cleaned = line
-      .replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.,]\d+Z?\s+/, '')
-      .replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d+\s+/, '')
-      .replace(/^\[.*?\]\s*/, '')
-      .replace(/^(INFO|DEBUG|WARN|ERROR|TRACE)\s*:\s*/i, '')
-      .replace(/^.*?:\s*Executing\s+SQL:\s*/i, '')
-      .replace(/^.*?---\s+\[.*?\]\s+/, '')
-      .replace(/^Hibernate:\s*/i, '')
-      .replace(/^.*?SQL:\s*/i, '')
-      .trim()
-
-    if (/^(select|insert|update|delete|create|alter|drop|with|merge)\b/i.test(cleaned)) {
-      inSQL = true
-    }
-
-    if (inSQL && cleaned) {
-      sqlLines.push(cleaned)
-      lineCount++
-
-      if (cleaned.endsWith(';') || /rows only$/i.test(cleaned) || /fetch first/i.test(cleaned)) {
-        inSQL = false
-      }
-    }
-  })
-
-  let sql = sqlLines.join('\n')
-
-  if (bindings.length > 0) {
-    bindings.sort((a, b) => a.index - b.index)
-    bindings.forEach(binding => {
-      const value = binding.value
-      let formattedValue: string
-
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
-        const cleanDate = value.replace('T', ' ').replace(/\[.*?\]$/, '')
-        formattedValue = `TIMESTAMP '${cleanDate}'`
-      } else if (/^-?\d+(\.\d+)?$/.test(value)) {
-        formattedValue = value
-      } else {
-        formattedValue = `'${value.replace(/'/g, "''")}'`
-      }
-
-      sql = sql.replace('?', formattedValue)
-    })
-  }
-
-  return { sql, lines: lineCount }
-}
-
-function formatSQL(sql: string): string {
-  let formatted = sql.replace(/\s+/g, ' ').trim()
-
-  const keywords = [
-    'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY',
-    'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
-    'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
-    'INSERT INTO', 'UPDATE', 'DELETE FROM', 'CREATE', 'ALTER', 'DROP', 'WITH'
-  ]
-
-  keywords.forEach(keyword => {
-    const regex = new RegExp(`\\b${keyword}\\b`, 'gi')
-    formatted = formatted.replace(regex, `\n${keyword}`)
-  })
-
-  formatted = formatted.replace(/SELECT\s+/gi, 'SELECT\n  ')
-  formatted = formatted.replace(/,\s*(?![^()]*\))/g, ',\n  ')
-  formatted = formatted.replace(/\bAND\b/gi, '\n  AND')
-  formatted = formatted.replace(/\bOR\b/gi, '\n  OR')
-  formatted = formatted.replace(/\bON\b/gi, '\n    ON')
-
-  formatted = formatted
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .join('\n')
-
-  return formatted
-}
+import type { SqlWorkerRequest, SqlWorkerResult } from '@/workers/sql-extractor.worker'
 
 export default function SQLExtractor() {
+  const router = useRouter()
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [stats, setStats] = useState({ lines: 0, size: 0, time: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const runSqlTask = useWorkerRpc<SqlWorkerRequest, SqlWorkerResult>(() => (
+    new Worker(new URL('../../workers/sql-extractor.worker.ts', import.meta.url), { type: 'module' })
+  ))
 
   useToolSession('sql-extractor', { input, output, stats }, (saved) => {
     if (typeof saved.input === 'string') setInput(saved.input)
@@ -115,41 +29,35 @@ export default function SQLExtractor() {
     }
   }, { maxBytes: 1_000_000 })
 
-  const handleExtractSQL = useCallback(() => {
+  useToolTransfer<{ input?: string }>('sql-extractor', (payload) => {
+    if (typeof payload.input !== 'string') return
+    setInput(payload.input)
+    setOutput('')
+    setStats({ lines: 0, size: 0, time: 0 })
+    toast.info('Log input received from Log Analyzer')
+  })
+
+  const handleExtractSQL = useCallback(async () => {
     if (!input.trim()) return
-    
     setIsProcessing(true)
     const startTime = performance.now()
-    
-    // Use requestIdleCallback for better performance
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => {
-        const result = extractSQL(input)
-        const endTime = performance.now()
-        
+
+    try {
+      const result = await runSqlTask({ action: 'extract', input })
+      if (result.action === 'extract') {
         setOutput(result.sql)
         setStats({
           lines: result.lines,
           size: result.sql.length,
-          time: endTime - startTime
+          time: performance.now() - startTime,
         })
-        setIsProcessing(false)
-      })
-    } else {
-      setTimeout(() => {
-        const result = extractSQL(input)
-        const endTime = performance.now()
-        
-        setOutput(result.sql)
-        setStats({
-          lines: result.lines,
-          size: result.sql.length,
-          time: endTime - startTime
-        })
-        setIsProcessing(false)
-      }, 10)
+      }
+    } catch (cause) {
+      toast.error('Unable to extract SQL', cause instanceof Error ? cause.message : undefined)
+    } finally {
+      setIsProcessing(false)
     }
-  }, [input])
+  }, [input, runSqlTask])
 
   // Keyboard shortcut handler
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -159,37 +67,26 @@ export default function SQLExtractor() {
     }
   }, [handleExtractSQL])
 
-  const handleFormatSQL = useCallback(() => {
+  const handleFormatSQL = useCallback(async () => {
     if (!output.trim()) return
-    
     setIsProcessing(true)
-    
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => {
-        const formatted = formatSQL(output)
-        
-        setOutput(formatted)
+
+    try {
+      const result = await runSqlTask({ action: 'format', input: output })
+      if (result.action === 'format') {
+        setOutput(result.sql)
         setStats(prev => ({
           ...prev,
-          lines: formatted.split('\n').length,
-          size: formatted.length
+          lines: result.sql.split('\n').length,
+          size: result.sql.length,
         }))
-        setIsProcessing(false)
-      })
-    } else {
-      setTimeout(() => {
-        const formatted = formatSQL(output)
-        
-        setOutput(formatted)
-        setStats(prev => ({
-          ...prev,
-          lines: formatted.split('\n').length,
-          size: formatted.length
-        }))
-        setIsProcessing(false)
-      }, 10)
+      }
+    } catch (cause) {
+      toast.error('Unable to format SQL', cause instanceof Error ? cause.message : undefined)
+    } finally {
+      setIsProcessing(false)
     }
-  }, [output])
+  }, [output, runSqlTask])
 
   const readFile = useCallback((file: File) => {
     if (!file) return
@@ -268,6 +165,12 @@ export default function SQLExtractor() {
     URL.revokeObjectURL(url)
     toast.success('SQL file downloaded')
   }, [output])
+
+  const openInExecutionPlan = () => {
+    if (!output.trim()) return
+    sendToolTransfer('execution-plan', { sourceSql: output })
+    router.push('/')
+  }
 
   // Show file size warning
   const fileSizeWarning = useMemo(() => {
@@ -448,6 +351,13 @@ export default function SQLExtractor() {
                 className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 font-medium transition-colors disabled:opacity-50"
               >
                 Download
+              </button>
+              <button
+                onClick={openInExecutionPlan}
+                disabled={!output.trim()}
+                className="px-3 py-1.5 border border-primary text-primary text-sm rounded hover:bg-primary/10 font-medium transition-colors disabled:opacity-50"
+              >
+                Open in Plan
               </button>
             </div>
           </div>

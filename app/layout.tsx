@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ToastViewport from '@/components/ToastViewport'
+import WorkspaceManager from '@/components/WorkspaceManager'
 
 const navigation = [
   { name: 'Log Analyzer', href: '/log-analyzer', keywords: 'logs rancher kubectl pod errors', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
@@ -13,10 +14,23 @@ const navigation = [
   { name: 'Excel Tools', href: '/excel-tools', keywords: 'xlsx csv analyzer formula calculator', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
   { name: 'Activity Diagram', href: '/activity-diagram', keywords: 'uml drawio flow chart svg', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
   { name: 'Env to K8s', href: '/env-to-k8s', keywords: 'environment kubernetes yaml properties config', icon: 'M4 7h16M4 12h16M4 17h7m5-1 2 2 4-4' },
+  { name: 'Nginx Redirects', href: '/nginx-redirect', keywords: 'nginx redirect generator rewrite 301 302 308 server config', icon: 'M5 12h13m-5-5 5 5-5 5M5 5v14' },
   { name: 'Hash Generator', href: '/hash-generator', keywords: 'md5 sha checksum digest', icon: 'M7 20l4-16m2 16 4-16M6 9h14M4 15h14' },
   { name: 'Diff Viewer', href: '/diff-viewer', keywords: 'compare text changes', icon: 'M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4' },
   { name: 'URL Encoder', href: '/url-encoder', keywords: 'base64 encode decode uri', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
 ]
+
+const favoritesKey = 'mydevtools:favorites:v1'
+const recentKey = 'mydevtools:recent:v1'
+
+function readStringArray(key: string) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]') as unknown
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 function ToolIcon({ path }: { path: string }) {
   return (
@@ -46,6 +60,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [activePaletteIndex, setActivePaletteIndex] = useState(0)
+  const [favorites, setFavorites] = useState<string[]>([])
+  const [recent, setRecent] = useState<string[]>([])
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const paletteInputRef = useRef<HTMLInputElement>(null)
   const paletteDialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
@@ -59,6 +76,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     const savedSidebar = localStorage.getItem('sidebarCollapsed')
 
     setSidebarCollapsed(savedSidebar ? JSON.parse(savedSidebar) : false)
+    setFavorites(readStringArray(favoritesKey))
+    setRecent(readStringArray(recentKey))
     setIsDarkMode(nextTheme)
     document.documentElement.classList.toggle('dark', nextTheme)
   }, [])
@@ -68,8 +87,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }, [sidebarQuery])
 
   const paletteItems = useMemo(() => {
-    return navigation.filter((item) => matchesTool(item, paletteQuery))
-  }, [paletteQuery])
+    return navigation
+      .filter((item) => matchesTool(item, paletteQuery))
+      .sort((left, right) => {
+        const favoriteDelta = Number(favorites.includes(right.href)) - Number(favorites.includes(left.href))
+        if (favoriteDelta !== 0) return favoriteDelta
+        const leftRecent = recent.indexOf(left.href)
+        const rightRecent = recent.indexOf(right.href)
+        if (leftRecent === -1 && rightRecent === -1) return 0
+        if (leftRecent === -1) return 1
+        if (rightRecent === -1) return -1
+        return leftRecent - rightRecent
+      })
+  }, [favorites, paletteQuery, recent])
+
+  useEffect(() => {
+    if (!pathname) return
+    setRecent((current) => {
+      const next = [pathname, ...current.filter((href) => href !== pathname)].slice(0, 5)
+      localStorage.setItem(recentKey, JSON.stringify(next))
+      return next
+    })
+  }, [pathname])
 
   const closePalette = () => {
     setPaletteOpen(false)
@@ -149,6 +188,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     document.documentElement.classList.toggle('dark', nextTheme)
   }
 
+  const toggleFavorite = (href: string) => {
+    setFavorites((current) => {
+      const next = current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
+      localStorage.setItem(favoritesKey, JSON.stringify(next))
+      return next
+    })
+  }
+
   const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
@@ -206,20 +253,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {filteredNavigation.map((item) => {
                 const isActive = pathname === item.href
                 return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`group relative flex min-h-11 items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container'}`}
-                  >
-                    <span className="flex-none"><ToolIcon path={item.icon} /></span>
-                    {!sidebarCollapsed && <span className="min-w-0 truncate">{item.name}</span>}
-                    {sidebarCollapsed && (
-                      <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap bg-surface-container-highest px-3 py-2 text-sm text-on-surface opacity-0 shadow-warm-lg transition-opacity group-hover:opacity-100">
-                        {item.name}
-                      </span>
+                  <div key={item.name} className="group relative flex items-center">
+                    <Link
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-12 text-sm font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container'}`}
+                    >
+                      <span className="flex-none"><ToolIcon path={item.icon} /></span>
+                      {!sidebarCollapsed && <span className="min-w-0 truncate">{item.name}</span>}
+                    </Link>
+                    {!sidebarCollapsed && (
+                      <button type="button" onClick={() => { toggleFavorite(item.href); setSidebarOpen(false) }} aria-label={`${favorites.includes(item.href) ? 'Remove' : 'Add'} ${item.name} ${favorites.includes(item.href) ? 'from' : 'to'} favorites`} title="Favorite" className="absolute right-2 h-8 w-8 text-on-surface-variant opacity-100 hover:text-primary lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100">
+                        {favorites.includes(item.href) ? '★' : '☆'}
+                      </button>
                     )}
-                  </Link>
+                    {sidebarCollapsed && (
+                      <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap bg-surface-container-highest px-3 py-2 text-sm text-on-surface opacity-0 shadow-warm-lg transition-opacity group-hover:opacity-100">{item.name}</span>
+                    )}
+                  </div>
                 )
               })}
               {filteredNavigation.length === 0 && !sidebarCollapsed && (
@@ -251,6 +302,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
               </button>
               <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-on-surface lg:text-xl">{currentTool?.name || 'MyDevTools'}</h2>
+              <button type="button" onClick={() => setWorkspaceOpen(true)} aria-label="Open workspace manager" title="Workspace Manager" className="mr-2 inline-flex h-10 w-10 items-center justify-center border border-outline-variant/60 bg-surface-container text-on-surface hover:bg-surface-container-high">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 7h16v12H4zM8 7V5h8v2" strokeWidth="2" strokeLinejoin="round" /></svg>
+              </button>
               <button
                 type="button"
                 onClick={openPalette}
@@ -306,7 +360,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   >
                     <ToolIcon path={item.icon} />
                     <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
-                    <span className={`text-xs ${index === activePaletteIndex ? 'text-white/75' : 'text-on-surface-variant'}`}>Open</span>
+                    <span className={`text-xs ${index === activePaletteIndex ? 'text-white/75' : 'text-on-surface-variant'}`}>
+                      {favorites.includes(item.href) ? 'Favorite' : recent.includes(item.href) ? 'Recent' : 'Open'}
+                    </span>
                   </button>
                 ))}
                 {paletteItems.length === 0 && <div className="px-4 py-10 text-center text-sm text-on-surface-variant">No matching tools found.</div>}
@@ -314,6 +370,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         )}
+        <WorkspaceManager open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />
         <ToastViewport />
       </body>
     </html>

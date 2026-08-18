@@ -1,17 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import EmptyState from '@/components/EmptyState'
 import { useToolSession } from '@/hooks/useToolSession'
+import { useWorkerRpc } from '@/hooks/useWorkerRpc'
+import { sendToolTransfer } from '@/hooks/useToolTransfer'
+import type { LogEntry, LogStats } from '@/lib/log-analyzer'
 import { copyText, toast } from '@/lib/toast'
-
-interface LogEntry {
-  line: number
-  level: string
-  timestamp: string
-  message: string
-  stackTrace?: string[]
-}
+import type { LogWorkerRequest, LogWorkerResult } from '@/workers/log-analyzer.worker'
 
 interface RancherPod {
   namespace: string
@@ -33,15 +30,17 @@ interface RancherAvailability {
 
 type LogSource = 'file' | 'rancher'
 type RancherAction = 'check-environment' | 'install-kubectl' | 'contexts' | 'namespaces' | 'pods' | 'logs' | null
+type LiveStatus = 'stopped' | 'connecting' | 'live' | 'paused' | 'reconnecting'
 
 const RANCHER_LOG_AGENT_URL = process.env.NEXT_PUBLIC_RANCHER_LOG_AGENT_URL || 'http://127.0.0.1:3210/rancher-logs'
 
 export default function LogAnalyzer() {
+  const router = useRouter()
   const [input, setInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filterLevel, setFilterLevel] = useState<string>('ALL')
   const [results, setResults] = useState<LogEntry[]>([])
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<LogStats | null>(null)
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -64,10 +63,26 @@ export default function LogAnalyzer() {
   const [tailLines, setTailLines] = useState(500)
   const [since, setSince] = useState('')
   const [previousContainer, setPreviousContainer] = useState(false)
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>('stopped')
   const rancherConfigGeneration = useRef(0)
+  const liveAbortRef = useRef<AbortController | null>(null)
+  const liveTextRef = useRef('')
+  const livePausedRef = useRef(false)
+  const liveStoppedRef = useRef(true)
+  const liveAnalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const analysisGenerationRef = useRef(0)
+  const runLogTask = useWorkerRpc<LogWorkerRequest, LogWorkerResult>(() => (
+    new Worker(new URL('../../workers/log-analyzer.worker.ts', import.meta.url), { type: 'module' })
+  ))
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
   const selectedPod = pods.find((pod) => `${pod.namespace}/${pod.name}` === selectedPodKey)
+
+  useEffect(() => () => {
+    liveStoppedRef.current = true
+    liveAbortRef.current?.abort()
+    if (liveAnalyzeTimerRef.current) clearTimeout(liveAnalyzeTimerRef.current)
+  }, [])
 
   useToolSession('log-analyzer', {
     input: input.length <= 400_000 ? input : '',
@@ -151,30 +166,6 @@ export default function LogAnalyzer() {
     </div>
   )
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Enter or Cmd+Enter: Analyze logs
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        if (!loading && input) {
-          analyzeLogs()
-        }
-      }
-      
-      // Slash focuses search when the cursor is not already in an editor.
-      if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
-        e.preventDefault()
-        const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
-        searchInput?.focus()
-        searchInput?.select()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [loading, input])
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -241,120 +232,162 @@ export default function LogAnalyzer() {
     }
   }
 
-  const analyzeLogs = (sourceInput = input) => {
+  const analyzeLogs = useCallback(async (sourceInput = input) => {
+    const generation = ++analysisGenerationRef.current
     setLoading(true)
     setError('')
-    setAnalyzeProgress(1) // Start at 1% for visibility
-    
-    // Use setTimeout to allow UI to update
-    setTimeout(() => {
-      try {
-        const lines = sourceInput.split('\n')
-        const entries: LogEntry[] = []
-        let currentEntry: LogEntry | null = null
-        
-        const levels = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 }
-        
-        const totalLines = lines.length
-        let processedLines = 0
-        
-        // Calculate update interval based on file size
-        const updateInterval = Math.max(1, Math.floor(totalLines / 100)) // Update every 1%
-        
-        // Simple loop - faster than forEach for large arrays
-        for (let index = 0; index < lines.length; index++) {
-          const line = lines[index]
-          processedLines++
-          
-          // Update progress at calculated intervals
-          if (processedLines % updateInterval === 0 || processedLines === totalLines) {
-            const progress = Math.min(99, Math.round((processedLines / totalLines) * 100))
-            setAnalyzeProgress(progress)
-          }
-          
-          if (!line.trim()) continue
-          
-          // Try JSON format first (Logstash/ELK)
-          try {
-            const json = JSON.parse(line)
-            const level = (json.level || 'INFO').toUpperCase()
-            if (levels.hasOwnProperty(level)) {
-              levels[level as keyof typeof levels]++
-            }
-            
-            entries.push({
-              line: index + 1,
-              level,
-              timestamp: json['@timestamp'] || json.timestamp || '',
-              message: json.message || line,
-              stackTrace: json.stack_trace ? [json.stack_trace] : []
-            })
-            continue
-          } catch (e) {
-            // Not JSON, try standard log format
-          }
-          
-          // Detect standard log line (timestamp + level)
-          const logMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}[.,]\d+)\s+(ERROR|WARN|INFO|DEBUG|TRACE)\s+(.+)/)
-          
-          if (logMatch) {
-            // Save previous entry
-            if (currentEntry) {
-              entries.push(currentEntry)
-            }
-            
-            const [, timestamp, level, message] = logMatch
-            levels[level as keyof typeof levels]++
-            
-            currentEntry = {
-              line: index + 1,
-              level,
-              timestamp,
-              message,
-              stackTrace: []
-            }
-          } else if (currentEntry && line.trim()) {
-            // Stack trace or continuation
-            currentEntry.stackTrace!.push(line)
-          }
-        }
-        
-        // Save last entry
-        if (currentEntry) {
-          entries.push(currentEntry)
-        }
-        
-        // Filter by level
-        let filtered = entries
-        if (filterLevel !== 'ALL') {
-          filtered = entries.filter(e => e.level === filterLevel)
-        }
-        
-        // Filter by search term
-        if (searchTerm) {
-          filtered = filtered.filter(e => 
-            e.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            e.stackTrace?.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
-          )
-        }
-        
-        setResults(filtered)
-        setStats({
-          total: entries.length,
-          ...levels,
-          filtered: filtered.length
-        })
-        toast.success('Log analysis complete', `${filtered.length.toLocaleString()} matching entries.`)
-        setAnalyzeProgress(100)
-        setTimeout(() => setAnalyzeProgress(0), 1000)
-      } catch (err) {
-        showError('Error parsing logs: ' + (err as Error).message)
-        setAnalyzeProgress(0)
-      } finally {
-        setLoading(false)
+    setAnalyzeProgress(1)
+
+    try {
+      const result = await runLogTask({ input: sourceInput, filterLevel, searchTerm }, { onProgress: setAnalyzeProgress })
+      if (generation !== analysisGenerationRef.current) return
+      setResults(result.entries)
+      setStats(result.stats)
+      toast.success('Log analysis complete', `${result.stats.filtered.toLocaleString()} matching entries.`)
+      setTimeout(() => setAnalyzeProgress(0), 1000)
+    } catch (cause) {
+      if (generation !== analysisGenerationRef.current) return
+      const message = 'Error parsing logs: ' + (cause instanceof Error ? cause.message : 'Unknown worker error.')
+      setError(message)
+      toast.error(message)
+      setAnalyzeProgress(0)
+    } finally {
+      if (generation === analysisGenerationRef.current) setLoading(false)
+    }
+  }, [filterLevel, input, runLogTask, searchTerm])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault()
+        if (!loading && input) void analyzeLogs()
       }
-    }, 100)
+
+      if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((event.target as HTMLElement)?.tagName)) {
+        event.preventDefault()
+        const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
+        searchInput?.focus()
+        searchInput?.select()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [analyzeLogs, input, loading])
+
+  const stopLiveLogs = useCallback((showToast = true) => {
+    liveStoppedRef.current = true
+    livePausedRef.current = false
+    liveAbortRef.current?.abort()
+    liveAbortRef.current = null
+    if (liveAnalyzeTimerRef.current) clearTimeout(liveAnalyzeTimerRef.current)
+    liveAnalyzeTimerRef.current = null
+    setLiveStatus('stopped')
+    if (showToast) toast.info('Live log stream stopped')
+  }, [])
+
+  const pauseLiveLogs = () => {
+    livePausedRef.current = true
+    setLiveStatus('paused')
   }
+
+  const resumeLiveLogs = () => {
+    livePausedRef.current = false
+    setLiveStatus('live')
+    setInput(liveTextRef.current)
+    void analyzeLogs(liveTextRef.current)
+  }
+
+  const startLiveLogs = useCallback(() => {
+    if (!selectedPod) return
+    const pod = selectedPod
+    const maxBufferSize = 5 * 1024 * 1024
+    liveStoppedRef.current = false
+    livePausedRef.current = false
+    liveTextRef.current = ''
+    setInput('')
+    setResults([])
+    setStats(null)
+
+    const connect = async (attempt: number): Promise<void> => {
+      if (liveStoppedRef.current) return
+      setLiveStatus(attempt === 0 ? 'connecting' : 'reconnecting')
+      const controller = new AbortController()
+      liveAbortRef.current = controller
+
+      try {
+        const response = await fetch(RANCHER_LOG_AGENT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'stream-logs',
+            kubeconfig,
+            context: selectedContext,
+            namespace: pod.namespace,
+            pod: pod.name,
+            container: selectedContainer,
+            tail: attempt === 0 ? tailLines : 1,
+            since: attempt === 0 ? since : '10s',
+            previous: previousContainer,
+          }),
+          signal: controller.signal,
+        })
+        if (!response.ok || !response.body) {
+          const payload = await response.json().catch(() => ({})) as { error?: string }
+          throw new Error(payload.error || 'Unable to start the live log stream.')
+        }
+
+        setLiveStatus('live')
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let pending = ''
+
+        while (!liveStoppedRef.current) {
+          const { value, done } = await reader.read()
+          if (done) break
+          pending += decoder.decode(value, { stream: true })
+          const messages = pending.split('\n')
+          pending = messages.pop() ?? ''
+
+          for (const messageText of messages) {
+            if (!messageText.trim()) continue
+            const message = JSON.parse(messageText) as { type: string; data?: string; error?: string }
+            if (message.type === 'error') throw new Error(message.error || 'Live log stream failed.')
+            if (message.type !== 'log' || !message.data) continue
+
+            liveTextRef.current = `${liveTextRef.current}${message.data}`.slice(-maxBufferSize)
+            if (livePausedRef.current) continue
+            setInput(liveTextRef.current)
+            if (liveAnalyzeTimerRef.current) clearTimeout(liveAnalyzeTimerRef.current)
+            liveAnalyzeTimerRef.current = setTimeout(() => {
+              void analyzeLogs(liveTextRef.current)
+            }, 750)
+          }
+        }
+
+        if (!liveStoppedRef.current) throw new Error('Live log connection closed.')
+      } catch (cause) {
+        if (liveStoppedRef.current || (cause instanceof DOMException && cause.name === 'AbortError')) return
+        if (attempt < 3) {
+          setLiveStatus('reconnecting')
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (2 ** attempt)))
+          return connect(attempt + 1)
+        }
+        const message = cause instanceof Error ? cause.message : 'Live log stream failed.'
+        setError(message)
+        toast.error('Live log stream stopped', message)
+        stopLiveLogs(false)
+      }
+    }
+
+    void connect(0)
+  }, [analyzeLogs, kubeconfig, previousContainer, selectedContainer, selectedContext, selectedPod, since, stopLiveLogs, tailLines])
+
+  useEffect(() => {
+    if (liveStatus !== 'stopped') stopLiveLogs(false)
+    // Selections identify the kubectl process. Changing one invalidates the active stream.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContainer, selectedContext, selectedPodKey])
 
   const loadSample = () => {
     const sample = `2026-04-06T04:56:28.540Z ERROR 72378 --- [nio-8088-exec-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 904, SQLState: 42000
@@ -603,12 +636,14 @@ export default function LogAnalyzer() {
       const ms = String(utc7Time.getUTCMilliseconds()).padStart(3, '0')
       
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms} (UTC+7)`
-    } catch (e) {
+    } catch {
       return timestamp
     }
   }
 
   const clearAll = () => {
+    stopLiveLogs(false)
+    analysisGenerationRef.current += 1
     rancherConfigGeneration.current += 1
     setInput('')
     setSearchTerm('')
@@ -628,6 +663,12 @@ export default function LogAnalyzer() {
     setTailLines(500)
     setSince('')
     setPreviousContainer(false)
+  }
+
+  const sendToSqlExtractor = () => {
+    if (!input.trim()) return
+    sendToolTransfer('sql-extractor', { input })
+    router.push('/sql-extractor')
   }
 
   return (
@@ -675,7 +716,10 @@ export default function LogAnalyzer() {
               <div className="inline-flex border border-outline-variant" role="group" aria-label="Log source">
                 <button
                   type="button"
-                  onClick={() => setLogSource('file')}
+                  onClick={() => {
+                    stopLiveLogs(false)
+                    setLogSource('file')
+                  }}
                   aria-pressed={logSource === 'file'}
                   className={`h-8 px-3 text-xs font-semibold ${logSource === 'file' ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container'}`}
                 >
@@ -696,6 +740,11 @@ export default function LogAnalyzer() {
                   className="text-sm text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary transition-colors"
                 >
                   Load Sample
+                </button>
+              )}
+              {input && (
+                <button type="button" onClick={sendToSqlExtractor} className="h-8 border border-primary px-3 text-xs font-semibold text-primary hover:bg-primary/10">
+                  Send to SQL
                 </button>
               )}
             </div>
@@ -940,14 +989,44 @@ export default function LogAnalyzer() {
                       </label>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void fetchRancherLogs()}
-                      disabled={!selectedPod || rancherAction !== null}
-                      className="h-10 w-full bg-primary text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {rancherAction === 'logs' ? 'Fetching logs...' : 'Fetch and analyze logs'}
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopLiveLogs(false)
+                          void fetchRancherLogs()
+                        }}
+                        disabled={!selectedPod || rancherAction !== null || liveStatus !== 'stopped'}
+                        className="h-10 border border-primary bg-surface-container-lowest text-xs font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {rancherAction === 'logs' ? 'Fetching...' : 'Fetch once'}
+                      </button>
+
+                      {liveStatus === 'stopped' ? (
+                        <button type="button" onClick={startLiveLogs} disabled={rancherAction !== null} className="h-10 bg-primary text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">
+                          Start live
+                        </button>
+                      ) : (
+                        <div className="flex h-10">
+                          <button
+                            type="button"
+                            onClick={liveStatus === 'paused' ? resumeLiveLogs : pauseLiveLogs}
+                            disabled={liveStatus === 'connecting' || liveStatus === 'reconnecting'}
+                            className="flex-1 border border-primary bg-surface-container-lowest text-xs font-semibold text-primary disabled:opacity-50"
+                          >
+                            {liveStatus === 'paused' ? 'Resume' : liveStatus === 'reconnecting' ? 'Retrying...' : liveStatus === 'connecting' ? 'Connecting...' : 'Pause'}
+                          </button>
+                          <button type="button" onClick={() => stopLiveLogs()} className="w-14 bg-tertiary text-xs font-semibold text-white">Stop</button>
+                        </div>
+                      )}
+                    </div>
+                    {liveStatus !== 'stopped' && (
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant" role="status" aria-live="polite">
+                        <span className={`h-2 w-2 rounded-full ${liveStatus === 'live' ? 'bg-green-600' : liveStatus === 'paused' ? 'bg-yellow-500' : 'animate-pulse bg-primary'}`} />
+                        Live stream: {liveStatus}
+                        <span className="ml-auto">Rolling buffer 5 MB</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

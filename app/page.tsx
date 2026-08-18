@@ -6,15 +6,16 @@ import {
   comparePlans,
   analyzePlanIssues,
   flattenPlan,
-  normalizePlan,
   type PlanIssue,
   type PlanComparison,
   type PlanNode,
 } from '@/lib/execution-plan'
-import { parseDbmsXplan } from '@/lib/dbms-xplan'
 import { deleteSavedPlan, listSavedPlans, savePlan, type SavedPlan } from '@/lib/plan-history'
 import EmptyState from '@/components/EmptyState'
 import { useToolSession } from '@/hooks/useToolSession'
+import { useToolTransfer } from '@/hooks/useToolTransfer'
+import { useWorkerRpc } from '@/hooks/useWorkerRpc'
+import type { PlanWorkerRequest, PlanWorkerResult } from '@/workers/execution-plan.worker'
 import { toast } from '@/lib/toast'
 
 const PlanVisualizer = dynamic(() => import('@/components/PlanVisualizer'), {
@@ -30,11 +31,6 @@ interface PlanStats {
   deadBranches: number
   fullScans: number
   indexScans: number
-}
-
-interface ParsedJsonResult {
-  plan: PlanNode | null
-  error: string | null
 }
 
 interface ComparisonRow {
@@ -76,22 +72,6 @@ function calculateStats(plan: PlanNode): PlanStats {
   }
 
   return stats
-}
-
-function parsePlanInput(value: string, label: string, format: InputFormat): ParsedJsonResult {
-  const formatLabel = format === 'json' ? 'JSON' : 'DBMS_XPLAN text'
-
-  if (value.trim().length === 0) {
-    return { plan: null, error: `${label} ${formatLabel} is empty. Paste a plan before visualizing.` }
-  }
-
-  try {
-    const plan = format === 'json' ? normalizePlan(JSON.parse(value) as unknown) : parseDbmsXplan(value)
-    return { plan, error: null }
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : 'Unknown validation error.'
-    return { plan: null, error: `${label} ${formatLabel} is invalid: ${detail}` }
-  }
 }
 
 function formatNumber(value: number | undefined): string {
@@ -330,6 +310,16 @@ export default function Home() {
   const [historyEnvironment, setHistoryEnvironment] = useState('')
   const [historyNotes, setHistoryNotes] = useState('')
   const [historyError, setHistoryError] = useState('')
+  const [sourceSql, setSourceSql] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const runWorker = useWorkerRpc<PlanWorkerRequest, PlanWorkerResult>(() => new Worker(new URL('../workers/execution-plan.worker.ts', import.meta.url), { type: 'module' }))
+
+  const applyWorkerResult = (result: PlanWorkerResult) => {
+    setParsedPlan(result.plan)
+    setStats(result.stats)
+    setBaselineStats(result.baselineStats)
+    setComparison(result.comparison)
+  }
 
   useToolSession('execution-plan', {
     mode,
@@ -339,6 +329,7 @@ export default function Home() {
     currentPlanJson,
     historySqlName,
     historyEnvironment,
+    sourceSql,
   }, (saved) => {
     const restoredMode: Mode = saved.mode === 'compare' ? 'compare' : 'single'
     const restoredFormat: InputFormat = saved.inputFormat === 'xplan' ? 'xplan' : 'json'
@@ -353,24 +344,24 @@ export default function Home() {
     setCurrentPlanJson(currentInput)
     if (typeof saved.historySqlName === 'string') setHistorySqlName(saved.historySqlName)
     if (typeof saved.historyEnvironment === 'string') setHistoryEnvironment(saved.historyEnvironment)
+    if (typeof saved.sourceSql === 'string') setSourceSql(saved.sourceSql)
 
     if (restoredMode === 'single' && singleInput.trim()) {
-      const result = parsePlanInput(singleInput, 'Current plan', restoredFormat)
-      if (result.plan) {
-        setParsedPlan(result.plan)
-        setStats(calculateStats(result.plan))
-      }
+      void runWorker({ mode: 'single', format: restoredFormat, value: singleInput })
+        .then(applyWorkerResult)
+        .catch(() => undefined)
     } else if (restoredMode === 'compare' && baselineInput.trim() && currentInput.trim()) {
-      const baseline = parsePlanInput(baselineInput, 'Baseline plan', restoredFormat)
-      const current = parsePlanInput(currentInput, 'Current plan', restoredFormat)
-      if (baseline.plan && current.plan) {
-        setParsedPlan(current.plan)
-        setStats(calculateStats(current.plan))
-        setBaselineStats(calculateStats(baseline.plan))
-        setComparison(comparePlans(baseline.plan, current.plan))
-      }
+      void runWorker({ mode: 'compare', format: restoredFormat, baseline: baselineInput, current: currentInput })
+        .then(applyWorkerResult)
+        .catch(() => undefined)
     }
   }, { maxBytes: 1_000_000 })
+
+  useToolTransfer<{ sourceSql?: string }>('execution-plan', (payload) => {
+    if (typeof payload.sourceSql !== 'string') return
+    setSourceSql(payload.sourceSql)
+    toast.info('Source SQL received from SQL Extractor')
+  })
 
   const issues = useMemo(() => parsedPlan ? analyzePlanIssues(parsedPlan) : [], [parsedPlan])
 
@@ -403,73 +394,53 @@ export default function Home() {
     }
   }
 
-  const handleParse = () => {
+  const handleParse = async () => {
     setError('')
+    setIsProcessing(true)
 
-    if (mode === 'single') {
-      const result = parsePlanInput(planJson, 'Current plan', inputFormat)
-      if (result.error || !result.plan) {
-        setParsedPlan(null)
-        setComparison(null)
-        setStats(null)
-        setBaselineStats(null)
-        const message = result.error ?? 'Current plan could not be validated.'
-        setError(message)
-        toast.error('Unable to visualize plan', message)
-        return
-      }
-
-      setParsedPlan(result.plan)
-      setStats(calculateStats(result.plan))
-      setComparison(null)
-      setBaselineStats(null)
-      toast.success('Execution plan visualized')
-      return
-    }
-
-    const baselineResult = parsePlanInput(baselinePlanJson, 'Baseline plan', inputFormat)
-    if (baselineResult.error || !baselineResult.plan) {
+    try {
+      const result = mode === 'single'
+        ? await runWorker({ mode: 'single', format: inputFormat, value: planJson })
+        : await runWorker({ mode: 'compare', format: inputFormat, baseline: baselinePlanJson, current: currentPlanJson })
+      applyWorkerResult(result)
+      toast.success(mode === 'single' ? 'Execution plan visualized' : 'Execution plans compared')
+    } catch (cause) {
       setParsedPlan(null)
       setComparison(null)
       setStats(null)
       setBaselineStats(null)
-      const message = baselineResult.error ?? 'Baseline plan could not be validated.'
+      const message = cause instanceof Error ? cause.message : 'Execution plan processing failed.'
       setError(message)
-      toast.error('Unable to compare plans', message)
-      return
+      toast.error(mode === 'single' ? 'Unable to visualize plan' : 'Unable to compare plans', message)
+    } finally {
+      setIsProcessing(false)
     }
-
-    const currentResult = parsePlanInput(currentPlanJson, 'Current plan', inputFormat)
-    if (currentResult.error || !currentResult.plan) {
-      setParsedPlan(null)
-      setComparison(null)
-      setStats(null)
-      setBaselineStats(null)
-      const message = currentResult.error ?? 'Current plan could not be validated.'
-      setError(message)
-      toast.error('Unable to compare plans', message)
-      return
-    }
-
-    setParsedPlan(currentResult.plan)
-    setStats(calculateStats(currentResult.plan))
-    setBaselineStats(calculateStats(baselineResult.plan))
-    setComparison(comparePlans(baselineResult.plan, currentResult.plan))
-    toast.success('Execution plans compared')
   }
 
-  const loadSample = () => {
+  const loadSample = async () => {
+    setError('')
     const current = singleSample()
     const currentJson = inputFormat === 'json' ? JSON.stringify(current, null, 2) : singleDbmsSample
-    const loadedCurrent = inputFormat === 'json' ? current : parseDbmsXplan(singleDbmsSample)
     setPlanJson(currentJson)
 
     if (mode === 'single') {
-      setParsedPlan(loadedCurrent)
-      setStats(calculateStats(loadedCurrent))
+      if (inputFormat === 'json') {
+        setParsedPlan(current)
+        setStats(calculateStats(current))
+      } else {
+        setIsProcessing(true)
+        try {
+          applyWorkerResult(await runWorker({ mode: 'single', format: 'xplan', value: singleDbmsSample }))
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : 'Execution plan processing failed.'
+          setError(message)
+          toast.error('Unable to visualize plan', message)
+        } finally {
+          setIsProcessing(false)
+        }
+      }
       setComparison(null)
       setBaselineStats(null)
-      setError('')
       return
     }
 
@@ -477,15 +448,25 @@ export default function Home() {
     const textSamples = comparisonDbmsSamples()
     const baselineJson = inputFormat === 'json' ? JSON.stringify(samples.baseline, null, 2) : textSamples.baseline
     const compareCurrentJson = inputFormat === 'json' ? JSON.stringify(samples.current, null, 2) : textSamples.current
-    const baselinePlan = inputFormat === 'json' ? samples.baseline : parseDbmsXplan(textSamples.baseline)
-    const currentPlan = inputFormat === 'json' ? samples.current : parseDbmsXplan(textSamples.current)
     setBaselinePlanJson(baselineJson)
     setCurrentPlanJson(compareCurrentJson)
-    setParsedPlan(currentPlan)
-    setStats(calculateStats(currentPlan))
-    setBaselineStats(calculateStats(baselinePlan))
-    setComparison(comparePlans(baselinePlan, currentPlan))
-    setError('')
+    if (inputFormat === 'json') {
+      setParsedPlan(samples.current)
+      setStats(calculateStats(samples.current))
+      setBaselineStats(calculateStats(samples.baseline))
+      setComparison(comparePlans(samples.baseline, samples.current))
+    } else {
+      setIsProcessing(true)
+      try {
+        applyWorkerResult(await runWorker({ mode: 'compare', format: 'xplan', baseline: textSamples.baseline, current: textSamples.current }))
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Execution plan processing failed.'
+        setError(message)
+        toast.error('Unable to compare plans', message)
+      } finally {
+        setIsProcessing(false)
+      }
+    }
   }
 
   const saveCurrentPlan = async () => {
@@ -662,6 +643,15 @@ export default function Home() {
         </div>
 
         <div className="p-4">
+          {sourceSql && (
+            <div className="mb-4 border border-outline-variant/60 bg-surface-container p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold uppercase text-on-surface-variant">Source SQL</span>
+                <button type="button" onClick={() => setSourceSql('')} className="text-xs font-medium text-tertiary">Clear</button>
+              </div>
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-xs text-on-surface">{sourceSql}</pre>
+            </div>
+          )}
           {mode === 'single' ? (
             <label className="block">
               <span className="mb-2 block text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">Current Plan {inputFormat === 'json' ? 'JSON' : 'DBMS_XPLAN'}</span>
@@ -703,10 +693,11 @@ export default function Home() {
 
           <button
             type="button"
-            onClick={handleParse}
+            onClick={() => void handleParse()}
+            disabled={isProcessing}
             className="mt-3 w-full rounded-lg bg-primary py-2.5 font-semibold text-white shadow-warm transition-colors hover:bg-primary/90"
           >
-            Visualize Plan
+            {isProcessing ? 'Processing Plan...' : 'Visualize Plan'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { constants } from 'node:fs'
 import { access, chmod, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { arch, homedir, platform, tmpdir } from 'node:os'
+import { StringDecoder } from 'node:string_decoder'
 import { dirname, join } from 'node:path'
 
 const HOST = '127.0.0.1'
@@ -27,7 +28,9 @@ const MAX_KUBECONFIG_SIZE = 1024 * 1024
 const MAX_REQUEST_SIZE = MAX_KUBECONFIG_SIZE + 128 * 1024
 const MAX_OUTPUT_SIZE = 20 * 1024 * 1024
 const COMMAND_TIMEOUT_MS = 30_000
+const MAX_STREAM_DURATION_MS = 30 * 60 * 1000
 const MAX_ACTIVE_REQUESTS = 2
+const MAX_ACTIVE_STREAMS = 1
 const allowedOrigins = new Set([
   `http://127.0.0.1:${NEXT_PORT}`,
   `http://localhost:${NEXT_PORT}`,
@@ -40,6 +43,7 @@ const allowedClusterHosts = new Set(
 )
 
 let activeRequests = 0
+let activeStreams = 0
 let installPromise = null
 
 class RequestError extends Error {
@@ -69,6 +73,15 @@ function responseHeaders(origin) {
     headers.Vary = 'Origin'
   }
   return headers
+}
+
+function streamHeaders(origin) {
+  return {
+    ...responseHeaders(origin),
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  }
 }
 
 function sendJson(response, status, payload, origin) {
@@ -296,6 +309,21 @@ function normalizeTail(value) {
   return Math.min(5_000, Math.max(1, Math.round(number)))
 }
 
+function logArguments(body, contextArgs, follow = false) {
+  const namespace = requireResourceName(body.namespace, 'Namespace')
+  const pod = requireResourceName(body.pod, 'Pod')
+  const container = optionalValue(body.container, 253)
+  if (container) requireResourceName(container, 'Container')
+  const tail = normalizeTail(body.tail)
+  const since = normalizeSince(body.since)
+  const args = [...contextArgs, '-n', namespace, 'logs', pod, `--tail=${tail}`]
+  if (follow) args.push('--follow=true')
+  if (container) args.push('-c', container)
+  if (since) args.push(`--since=${since}`)
+  if (body.previous) args.push('--previous')
+  return { args, namespace, pod, container, tail, since }
+}
+
 async function readLimitedJson(request) {
   const declaredLength = Number(request.headers['content-length'])
   if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_SIZE) {
@@ -379,21 +407,94 @@ async function executeWithKubeconfig(configPath, body) {
     }
 
     if (body.action === 'logs') {
-      const namespace = requireResourceName(body.namespace, 'Namespace')
-      const pod = requireResourceName(body.pod, 'Pod')
-      const container = optionalValue(body.container, 253)
-      if (container) requireResourceName(container, 'Container')
-      const tail = normalizeTail(body.tail)
-      const since = normalizeSince(body.since)
-      const args = [...contextArgs, '-n', namespace, 'logs', pod, `--tail=${tail}`]
-      if (container) args.push('-c', container)
-      if (since) args.push(`--since=${since}`)
-      if (body.previous) args.push('--previous')
+      const { args, namespace, pod, container, tail, since } = logArguments(body, contextArgs)
       const logs = await runKubectl(configPath, args)
       return { logs, namespace, pod, container, tail, since }
     }
 
   throw new RequestError(400, 'Unsupported Rancher log action.')
+}
+
+async function streamWithKubeconfig(configPath, body, response, origin) {
+  await validateKubeconfig(configPath)
+  const context = optionalValue(body.context, 253)
+  const contextArgs = context ? ['--context', context] : []
+  const { args } = logArguments(body, contextArgs, true)
+
+  response.writeHead(200, streamHeaders(origin))
+  response.write(`${JSON.stringify({ type: 'status', status: 'connected' })}\n`)
+
+  const child = spawn(kubectlPath, ['--kubeconfig', configPath, '--request-timeout=0', ...args], {
+    env: { ...process.env, KUBECONFIG: configPath },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let stopRequested = false
+  let forceKillTimer
+  const stop = () => {
+    if (stopRequested) return
+    stopRequested = true
+    if (child.exitCode === null) {
+      child.kill('SIGTERM')
+      forceKillTimer = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL')
+      }, 2000)
+    }
+  }
+  const durationTimer = setTimeout(stop, MAX_STREAM_DURATION_MS)
+  response.once('close', stop)
+
+  const stdoutDecoder = new StringDecoder('utf8')
+  const stderrDecoder = new StringDecoder('utf8')
+  const writeLog = (data) => {
+    if (!data || response.destroyed) return
+    response.write(`${JSON.stringify({ type: 'log', data })}\n`)
+  }
+  child.stdout.on('data', (chunk) => {
+    if (response.destroyed) return
+    if (chunk.length > 1024 * 1024) {
+      response.write(`${JSON.stringify({ type: 'error', error: 'kubectl produced an oversized log chunk.' })}\n`)
+      stop()
+      return
+    }
+    writeLog(stdoutDecoder.write(chunk))
+  })
+  child.stdout.once('close', () => writeLog(stdoutDecoder.end()))
+
+  let stderr = ''
+  const appendStderr = (data) => {
+    stderr = `${stderr}${data}`.slice(-2048)
+  }
+  child.stderr.on('data', (chunk) => appendStderr(stderrDecoder.write(chunk)))
+  child.stderr.once('close', () => appendStderr(stderrDecoder.end()))
+
+  await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (code, signal) => {
+      clearTimeout(durationTimer)
+      if (forceKillTimer) clearTimeout(forceKillTimer)
+      if (!response.destroyed) {
+        response.write(`${JSON.stringify({
+          type: 'status',
+          status: 'closed',
+          code,
+          signal,
+          error: code && !stopRequested ? 'kubectl live stream ended unexpectedly.' : undefined,
+          detail: code && !stopRequested ? stderr : undefined,
+        })}\n`)
+        response.end()
+      }
+      resolve()
+    })
+  })
+}
+
+async function streamAction(body, response, origin) {
+  const kubeconfig = typeof body.kubeconfig === 'string' ? body.kubeconfig.trim() : ''
+  if (kubeconfig) {
+    if (Buffer.byteLength(kubeconfig, 'utf8') > MAX_KUBECONFIG_SIZE) throw new RequestError(413, 'Kubeconfig is larger than 1 MB.')
+    return withTemporaryKubeconfig(kubeconfig, (configPath) => streamWithKubeconfig(configPath, body, response, origin))
+  }
+  return streamWithKubeconfig(await resolveConfiguredKubeconfig(), body, response, origin)
 }
 
 async function executeAction(body) {
@@ -437,16 +538,33 @@ const server = createServer(async (request, response) => {
     sendJson(response, 415, { error: 'Content-Type must be application/json.' }, origin)
     return
   }
-  if (activeRequests >= MAX_ACTIVE_REQUESTS) {
-    sendJson(response, 429, { error: 'Too many kubectl requests are running.' }, origin)
-    return
-  }
 
-  activeRequests += 1
+  let requestKind = null
   try {
     const body = await readLimitedJson(request)
-    sendJson(response, 200, await executeAction(body), origin)
+    const isStream = body?.action === 'stream-logs'
+    if (isStream) {
+      if (activeStreams >= MAX_ACTIVE_STREAMS) {
+        sendJson(response, 429, { error: 'Too many kubectl requests are running.' }, origin)
+        return
+      }
+      activeStreams += 1
+      requestKind = 'stream'
+      await streamAction(body, response, origin)
+    } else {
+      if (activeRequests >= MAX_ACTIVE_REQUESTS) {
+        sendJson(response, 429, { error: 'Too many kubectl requests are running.' }, origin)
+        return
+      }
+      activeRequests += 1
+      requestKind = 'request'
+      sendJson(response, 200, await executeAction(body), origin)
+    }
   } catch (cause) {
+    if (response.headersSent) {
+      if (!response.destroyed) response.end(`${JSON.stringify({ type: 'error', error: 'Unable to continue Rancher log stream.' })}\n`)
+      return
+    }
     if (cause instanceof RequestError) {
       sendJson(response, cause.status, { error: cause.message }, origin)
     } else if (cause instanceof KubectlError) {
@@ -455,7 +573,8 @@ const server = createServer(async (request, response) => {
       sendJson(response, 500, { error: 'Unable to retrieve Rancher logs.' }, origin)
     }
   } finally {
-    activeRequests -= 1
+    if (requestKind === 'stream') activeStreams -= 1
+    else if (requestKind === 'request') activeRequests -= 1
   }
 })
 

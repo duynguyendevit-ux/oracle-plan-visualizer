@@ -1,16 +1,43 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import EmptyState from '@/components/EmptyState'
 import { useToolSession } from '@/hooks/useToolSession'
+import { useToolTransfer } from '@/hooks/useToolTransfer'
+import { toast } from '@/lib/toast'
 
 export default function DiffViewer() {
   const [leftText, setLeftText] = useState('')
   const [rightText, setRightText] = useState('')
+  const leftTextRef = useRef(leftText)
+  const pendingTransferRef = useRef<{ text?: string; label?: string } | null>(null)
+  leftTextRef.current = leftText
 
-  useToolSession('diff-viewer', { leftText, rightText }, (saved) => {
+  const isRestored = useToolSession('diff-viewer', { leftText, rightText }, (saved) => {
     if (typeof saved.leftText === 'string') setLeftText(saved.leftText)
     if (typeof saved.rightText === 'string') setRightText(saved.rightText)
+  })
+
+  const applyIncomingTransfer = useCallback((payload: { text?: string; label?: string }) => {
+    if (typeof payload.text !== 'string') return
+    if (leftTextRef.current) setRightText(payload.text)
+    else setLeftText(payload.text)
+    toast.info(`${payload.label || 'Text'} received`)
+  }, [])
+
+  useEffect(() => {
+    if (!isRestored || !pendingTransferRef.current) return
+    const pendingTransfer = pendingTransferRef.current
+    pendingTransferRef.current = null
+    applyIncomingTransfer(pendingTransfer)
+  }, [applyIncomingTransfer, isRestored])
+
+  useToolTransfer<{ text?: string; label?: string }>('diff-viewer', (payload) => {
+    if (!isRestored) {
+      pendingTransferRef.current = payload
+      return
+    }
+    applyIncomingTransfer(payload)
   })
 
   const computeDiff = () => {

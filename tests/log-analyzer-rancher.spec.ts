@@ -58,7 +58,7 @@ test('loads Rancher pod logs from the configured local kubeconfig and analyzes t
   await expect(page.getByLabel('Kubernetes container')).toHaveValue('event-diary')
   await page.getByLabel('Log tail lines').fill('800')
   await page.getByLabel('Log since duration').fill('30m')
-  await page.getByRole('button', { name: 'Fetch and analyze logs' }).click()
+  await page.getByRole('button', { name: 'Fetch once' }).click()
 
   await expect(page.getByPlaceholder('Paste Spring Boot logs here or upload a file...')).toContainText('Rancher log failure')
   await expect(page.getByText('Rancher log failure', { exact: false })).toBeVisible()
@@ -103,4 +103,37 @@ test('installs kubectl through the local agent when it is missing', async ({ pag
   await page.getByRole('button', { name: 'Install kubectl' }).click()
   await expect(page.getByText('/home/dev/.local/bin/kubectl', { exact: false })).toBeVisible()
   await expect(page.getByText('v1.31.0', { exact: false })).toBeVisible()
+})
+
+test('streams Rancher logs and can stop the live connection', async ({ page }) => {
+  await page.route('**/rancher-logs', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { agentAvailable: true, available: true, kubectlPath: '/usr/bin/kubectl', configuredKubeconfigPath: '/home/dev/rancher.yaml' } })
+      return
+    }
+    const body = route.request().postDataJSON() as { action: string }
+    if (body.action === 'contexts') return route.fulfill({ json: { contexts: ['rancher-dev'] } })
+    if (body.action === 'namespaces') return route.fulfill({ json: { namespaces: ['backend'] } })
+    if (body.action === 'pods') {
+      return route.fulfill({ json: { pods: [{ namespace: 'backend', name: 'live-pod', phase: 'Running', ready: true, restarts: 0, containers: ['app'] }] } })
+    }
+    if (body.action === 'stream-logs') {
+      return route.fulfill({
+        contentType: 'application/x-ndjson',
+        body: `${JSON.stringify({ type: 'status', status: 'connected' })}\n${JSON.stringify({ type: 'log', data: '2026-07-17T10:00:00.000Z INFO 1 --- [main] demo.Stream : live browser line\n' })}\n`,
+      })
+    }
+    await route.fulfill({ status: 400, json: { error: 'Unexpected action' } })
+  })
+
+  await page.goto('/log-analyzer')
+  await page.getByRole('button', { name: 'Rancher', exact: true }).click()
+  await page.getByRole('button', { name: 'Load contexts' }).click()
+  await page.getByRole('button', { name: 'Load namespaces' }).click()
+  await page.getByRole('button', { name: 'Load pods' }).click()
+  await page.getByRole('button', { name: 'Start live' }).click()
+
+  await expect(page.getByText('live browser line', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await expect(page.getByRole('button', { name: 'Start live' })).toBeVisible()
 })

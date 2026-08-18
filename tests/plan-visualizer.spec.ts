@@ -95,6 +95,18 @@ test('imports DBMS_XPLAN text with runtime metrics and issues', async ({ page })
   await expect(page.locator('aside')).toContainText('Active metric20')
 })
 
+test('reports worker validation errors and can visualize after correction', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByRole('textbox', { name: 'Current Plan JSON' })
+  await input.fill('{ invalid json')
+  await page.getByRole('button', { name: 'Visualize Plan' }).click()
+  await expect(page.locator('main div[role="alert"]').filter({ hasText: 'Current plan JSON is invalid' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Load Sample', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Execution Tree', exact: true })).toBeVisible()
+  await expect(page.locator(`${svgSelector} .node`)).toHaveCount(5)
+})
+
 test('keeps multiple predicates for the same DBMS_XPLAN operation', async ({ page }) => {
   const plan = `| Id | Operation          | Name      | Rows | Cost (%CPU)|
 |  0 | SELECT STATEMENT   |           |    1 |           4 |

@@ -74,6 +74,36 @@ if (args.includes('view')) {
   console.log(JSON.stringify({ clusters: [{ name: 'demo', cluster: { server } }], users: [{ name: 'demo', user }] }))
 } else if (args.includes('get-contexts')) {
   console.log('demo-context')
+} else if (args.includes('logs') && args.includes('--follow=true')) {
+  const writeChunks = (stream, chunks, index = 0) => {
+    if (index >= chunks.length) return
+    stream.write(chunks[index])
+    setTimeout(() => writeChunks(stream, chunks, index + 1), 10)
+  }
+  if (args.includes('hold-pod')) {
+    process.stdout.write('2026-07-17T10:00:00.000Z INFO 1 --- [main] demo.Stream : held line\\n')
+    setInterval(() => {}, 1_000)
+  } else if (args.includes('utf8-pod')) {
+    writeChunks(process.stdout, [
+      Buffer.from('2026-07-17T10:00:00.000Z INFO demo.Stream : caf'),
+      Buffer.from([0xc3]),
+      Buffer.from([0xa9]),
+      Buffer.from(' 🚀 line\\n'),
+    ])
+    setTimeout(() => process.exit(0), 100)
+  } else if (args.includes('error-pod')) {
+    writeChunks(process.stderr, [
+      Buffer.from('kubectl '),
+      Buffer.from([0xe2]),
+      Buffer.from([0x9d]),
+      Buffer.from([0x8c]),
+      Buffer.from(' failed'),
+    ])
+    setTimeout(() => process.exit(1), 100)
+  } else {
+    console.log('2026-07-17T10:00:00.000Z INFO 1 --- [main] demo.Stream : live line')
+    setTimeout(() => process.exit(0), 50)
+  }
 } else {
   console.log(JSON.stringify({ items: [] }))
 }
@@ -160,4 +190,97 @@ test('agent rejects oversized requests before invoking kubectl', async () => {
     body: JSON.stringify({ action: 'contexts', kubeconfig: 'a'.repeat(1_300_000) }),
   })
   assert.equal(response.status, 413)
+})
+
+test('agent streams kubectl logs and enables follow mode', async () => {
+  const response = await fetch(agentUrl, {
+    method: 'POST',
+    headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'stream-logs',
+      context: 'demo-context',
+      namespace: 'backend',
+      pod: 'demo-pod',
+      container: 'app',
+      tail: 100,
+      since: '5m',
+    }),
+  })
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type') || '', /application\/x-ndjson/)
+  const stream = await response.text()
+  assert.match(stream, /"status":"connected"/)
+  assert.match(stream, /live line/)
+  const invocations = (await readFile(argvLog, 'utf8')).trim().split('\n').map(JSON.parse)
+  assert.ok(invocations.some((args) => args.includes('logs') && args.includes('--follow=true')))
+})
+
+test('agent keeps short requests available while a bounded live stream is active', async () => {
+  const streamResponse = await fetch(agentUrl, {
+    method: 'POST',
+    headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'stream-logs', namespace: 'backend', pod: 'hold-pod' }),
+  })
+  assert.equal(streamResponse.status, 200)
+
+  const shortRequests = [
+    { action: 'contexts' },
+    { action: 'namespaces', context: 'demo-context' },
+    { action: 'pods', context: 'demo-context', namespace: 'backend' },
+    { action: 'logs', context: 'demo-context', namespace: 'backend', pod: 'demo-pod' },
+  ]
+  for (const body of shortRequests) {
+    const response = await fetch(agentUrl, {
+      method: 'POST',
+      headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    assert.equal(response.status, 200, body.action)
+  }
+
+  const secondStream = await fetch(agentUrl, {
+    method: 'POST',
+    headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'stream-logs', namespace: 'backend', pod: 'hold-pod' }),
+  })
+  assert.equal(secondStream.status, 429)
+  await secondStream.text()
+
+  await streamResponse.body?.cancel()
+
+  let released = false
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const probe = await fetch(agentUrl, {
+      method: 'POST',
+      headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'stream-logs', namespace: 'backend', pod: 'demo-pod' }),
+    })
+    await probe.text()
+    if (probe.status === 200) {
+      released = true
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.equal(released, true)
+})
+
+test('agent preserves split UTF-8 stdout and stderr across kubectl chunks', async () => {
+  const readStream = async (pod) => {
+    const response = await fetch(agentUrl, {
+      method: 'POST',
+      headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'stream-logs', namespace: 'backend', pod }),
+    })
+    assert.equal(response.status, 200)
+    return (await response.text()).trim().split('\n').map(JSON.parse)
+  }
+
+  const stdoutRecords = await readStream('utf8-pod')
+  assert.equal(stdoutRecords.filter((record) => record.type === 'log').map((record) => record.data).join(''), '2026-07-17T10:00:00.000Z INFO demo.Stream : café 🚀 line\n')
+
+  const stderrRecords = await readStream('error-pod')
+  const closed = stderrRecords.find((record) => record.type === 'status' && record.status === 'closed')
+  assert.equal(closed.code, 1)
+  assert.match(closed.detail, /kubectl ❌ failed/)
 })

@@ -1,43 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import * as XLSX from 'xlsx'
 import EmptyState from '@/components/EmptyState'
 import { useToolSession } from '@/hooks/useToolSession'
+import { useWorkerRpc } from '@/hooks/useWorkerRpc'
 import { toast } from '@/lib/toast'
+import type {
+  AnalyzerStats,
+  CalculationRow,
+  DiffResult,
+  ExcelWorkerRequest,
+  ExcelWorkerResult,
+} from '@/workers/excel-tools.worker'
 
 type Tool = 'analyzer' | 'formula' | 'diff' | 'calculator'
-
-async function readSpreadsheet(file: File): Promise<any[]> {
-  const isCsv = file.name.toLowerCase().endsWith('.csv')
-  let workbook: XLSX.WorkBook
-
-  if (isCsv) {
-    workbook = XLSX.read(await file.text(), { type: 'string' })
-  } else {
-    const data = await file.arrayBuffer()
-    const bytes = new Uint8Array(data)
-    const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b
-    const isOle = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0
-    if (!isZip && !isOle) throw new Error('The selected file is not a valid Excel workbook.')
-    workbook = XLSX.read(data)
-  }
-  const sheetName = workbook.SheetNames[0]
-
-  if (!sheetName || !workbook.Sheets[sheetName]) {
-    throw new Error('The spreadsheet does not contain a readable worksheet.')
-  }
-
-  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName])
-}
 
 export default function ExcelTools() {
   const [activeTool, setActiveTool] = useState<Tool>('analyzer')
   
   // Data Analyzer state
-  const [analyzerFile, setAnalyzerFile] = useState<File | null>(null)
-  const [analyzerData, setAnalyzerData] = useState<any[]>([])
-  const [analyzerStats, setAnalyzerStats] = useState<any>(null)
+  const [analyzerStats, setAnalyzerStats] = useState<AnalyzerStats | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   
   // Formula Tester state
@@ -48,20 +30,22 @@ export default function ExcelTools() {
   // Diff Viewer state
   const [diffFile1, setDiffFile1] = useState<File | null>(null)
   const [diffFile2, setDiffFile2] = useState<File | null>(null)
-  const [diffResult, setDiffResult] = useState<any>(null)
+  const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
 
   // Calculator state
-  const [calcFile, setCalcFile] = useState<File | null>(null)
-  const [calcData, setCalcData] = useState<any[]>([])
   const [calcColumns, setCalcColumns] = useState<string[]>([])
   const [calcCol1, setCalcCol1] = useState('')
   const [calcCol2, setCalcCol2] = useState('')
   const [calcOperation, setCalcOperation] = useState<'add' | 'subtract'>('add')
   const [calcFormat, setCalcFormat] = useState<'number' | 'currency' | 'percentage'>('number')
-  const [calcResult, setCalcResult] = useState<any[]>([])
+  const [calcResult, setCalcResult] = useState<CalculationRow[]>([])
   const [calcFilter, setCalcFilter] = useState('')
   const [calcPage, setCalcPage] = useState(1)
   const [calcPageSize, setCalcPageSize] = useState(50)
+  const [workerAction, setWorkerAction] = useState<ExcelWorkerRequest['action'] | null>(null)
+  const runExcelTask = useWorkerRpc<ExcelWorkerRequest, ExcelWorkerResult>(() => (
+    new Worker(new URL('../../workers/excel-tools.worker.ts', import.meta.url), { type: 'module' })
+  ))
 
   useToolSession('excel-tools', {
     activeTool,
@@ -83,278 +67,135 @@ export default function ExcelTools() {
     if (typeof saved.calcPageSize === 'number') setCalcPageSize(saved.calcPageSize)
   })
 
-  // Data Analyzer functions
-  const handleAnalyzerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    processAnalyzerFile(file)
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    const file = e.dataTransfer.files?.[0]
-    if (file) {
-      processAnalyzerFile(file)
+  const runTask = async (request: ExcelWorkerRequest, transfer: Transferable[] = []) => {
+    setWorkerAction(request.action)
+    try {
+      return await runExcelTask(request, { transfer })
+    } finally {
+      setWorkerAction(null)
     }
   }
 
   const processAnalyzerFile = async (file: File) => {
-    setAnalyzerFile(file)
-
     try {
-      const jsonData = await readSpreadsheet(file)
-      setAnalyzerData(jsonData)
-      analyzeData(jsonData)
-      toast.success('Spreadsheet analyzed', `${jsonData.length.toLocaleString()} rows loaded.`)
+      const data = await file.arrayBuffer()
+      const result = await runTask({ action: 'analyze', file: { name: file.name, data } }, [data])
+      if (result.action === 'analyze') {
+        setAnalyzerStats(result.stats)
+        toast.success('Spreadsheet analyzed', `${result.stats.rowCount.toLocaleString()} rows loaded.`)
+      }
     } catch (cause) {
       toast.error('Unable to analyze spreadsheet', cause instanceof Error ? cause.message : undefined)
     }
   }
-  
-  const analyzeData = (data: any[]) => {
-    if (data.length === 0) return
-    
-    const stats: any = {
-      rowCount: data.length,
-      columnCount: Object.keys(data[0]).length,
-      columns: {}
-    }
-    
-    Object.keys(data[0]).forEach(col => {
-      const values = data.map(row => row[col]).filter(v => v !== null && v !== undefined)
-      const numericValues = values.filter(v => typeof v === 'number')
-      
-      stats.columns[col] = {
-        type: numericValues.length > values.length * 0.8 ? 'numeric' : 'text',
-        nullCount: data.length - values.length,
-        uniqueCount: new Set(values).size
-      }
-      
-      if (numericValues.length > 0) {
-        stats.columns[col].min = Math.min(...numericValues)
-        stats.columns[col].max = Math.max(...numericValues)
-        stats.columns[col].avg = numericValues.reduce((a, b) => a + b, 0) / numericValues.length
-      }
-    })
-    
-    setAnalyzerStats(stats)
+
+  const handleAnalyzerUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) void processAnalyzerFile(file)
+    event.target.value = ''
   }
-  
-  // Formula Tester functions
-  const testFormula = () => {
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(false)
+    const file = event.dataTransfer.files?.[0]
+    if (file) void processAnalyzerFile(file)
+  }
+
+  const testFormula = async () => {
+    setFormulaError('')
     try {
-      setFormulaError('')
-      // Simple formula evaluation (SUM, AVERAGE, etc.)
-      let formula = formulaInput.trim()
-      
-      if (formula.startsWith('=')) {
-        formula = formula.substring(1)
+      const result = await runTask({ action: 'formula', input: formulaInput })
+      if (result.action === 'formula') {
+        setFormulaResult(`Result: ${result.result}`)
+        toast.success('Formula evaluated')
       }
-      
-      // Handle SUM
-      if (formula.toUpperCase().startsWith('SUM(')) {
-        const match = formula.match(/SUM\(([^)]+)\)/i)
-        if (match) {
-          const numbers = match[1].split(',').map(n => parseFloat(n.trim()))
-          const result = numbers.reduce((a, b) => a + b, 0)
-          setFormulaResult(`Result: ${result}`)
-          toast.success('Formula evaluated')
-          return
-        }
-      }
-      
-      // Handle AVERAGE
-      if (formula.toUpperCase().startsWith('AVERAGE(')) {
-        const match = formula.match(/AVERAGE\(([^)]+)\)/i)
-        if (match) {
-          const numbers = match[1].split(',').map(n => parseFloat(n.trim()))
-          const result = numbers.reduce((a, b) => a + b, 0) / numbers.length
-          setFormulaResult(`Result: ${result.toFixed(2)}`)
-          toast.success('Formula evaluated')
-          return
-        }
-      }
-      
-      // Handle simple math
-      const result = eval(formula)
-      setFormulaResult(`Result: ${result}`)
-      toast.success('Formula evaluated')
-    } catch (err: any) {
-      setFormulaError(err.message)
-      toast.error('Formula evaluation failed', err.message)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Formula evaluation failed.'
+      setFormulaResult('')
+      setFormulaError(message)
+      toast.error('Formula evaluation failed', message)
     }
   }
-  
-  // Diff Viewer functions
+
   const handleDiffCompare = async () => {
     if (!diffFile1 || !diffFile2) return
-
     try {
-      const [json1, json2] = await Promise.all([readSpreadsheet(diffFile1), readSpreadsheet(diffFile2)])
-      const differences = {
-        rowCountDiff: json1.length - json2.length,
-        added: json2.length > json1.length ? json2.slice(json1.length) : [],
-        removed: json1.length > json2.length ? json1.slice(json2.length) : [],
-        modified: [] as any[]
+      const [leftData, rightData] = await Promise.all([diffFile1.arrayBuffer(), diffFile2.arrayBuffer()])
+      const result = await runTask({
+        action: 'compare',
+        left: { name: diffFile1.name, data: leftData },
+        right: { name: diffFile2.name, data: rightData },
+      }, [leftData, rightData])
+      if (result.action === 'compare') {
+        setDiffResult(result.result)
+        toast.success('Spreadsheets compared')
       }
-
-      const minLength = Math.min(json1.length, json2.length)
-      for (let i = 0; i < minLength; i++) {
-        const row1 = json1[i] as any
-        const row2 = json2[i] as any
-        const diff: any = { row: i + 1, changes: {} }
-
-        Object.keys(row1).forEach(key => {
-          if (row1[key] !== row2[key]) {
-            diff.changes[key] = { old: row1[key], new: row2[key] }
-          }
-        })
-
-        if (Object.keys(diff.changes).length > 0) {
-          differences.modified.push(diff)
-        }
-      }
-
-      setDiffResult(differences)
-      toast.success('Spreadsheets compared')
     } catch (cause) {
       toast.error('Unable to compare spreadsheets', cause instanceof Error ? cause.message : undefined)
     }
   }
 
-  // Calculator functions
-  const handleCalcUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleCalcUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file) return
-
-    setCalcFile(file)
-
     try {
-      const jsonData = await readSpreadsheet(file)
-      setCalcData(jsonData)
-      setCalcColumns(jsonData.length > 0 ? Object.keys(jsonData[0]) : [])
-      toast.success('Calculator data loaded', `${jsonData.length.toLocaleString()} rows available.`)
+      const data = await file.arrayBuffer()
+      const result = await runTask({ action: 'load-calculator', file: { name: file.name, data } }, [data])
+      if (result.action === 'load-calculator') {
+        setCalcColumns(result.columns)
+        setCalcCol1('')
+        setCalcCol2('')
+        setCalcResult([])
+        toast.success('Calculator data loaded', `${result.rowCount.toLocaleString()} rows available.`)
+      }
     } catch (cause) {
       toast.error('Unable to load calculator data', cause instanceof Error ? cause.message : undefined)
+    } finally {
+      event.target.value = ''
     }
   }
 
-  const calculateColumns = () => {
-    if (!calcCol1 || !calcCol2 || calcData.length === 0) return
-
-    const results = calcData.map((row, idx) => {
-      let val1: number
-      let val2: number
-      let isDateCalc = false
-      
-      // Helper function to parse custom date format: "HH:MM:SS.mmm DD/MM/YYYY" or "HH:MM:SS DD/MM/YYYY"
-      const parseCustomDate = (dateStr: string): Date | null => {
-        if (typeof dateStr !== 'string') return null
-        
-        // Match format with milliseconds: "16:16:32.123 20/03/2026"
-        let match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-        if (match) {
-          const [, hours, minutes, seconds, milliseconds, day, month, year] = match
-          return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes), parseInt(seconds), parseInt(milliseconds))
-        }
-        
-        // Match format without milliseconds: "16:16:32 20/03/2026"
-        match = dateStr.match(/(\d{1,2}):(\d{2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-        if (match) {
-          const [, hours, minutes, seconds, day, month, year] = match
-          return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes), parseInt(seconds))
-        }
-        
-        // Try standard Date parsing as fallback
-        const date = new Date(dateStr)
-        return isNaN(date.getTime()) ? null : date
+  const calculateColumns = async () => {
+    if (!calcCol1 || !calcCol2 || calcColumns.length === 0) return
+    try {
+      const result = await runTask({ action: 'calculate', col1: calcCol1, col2: calcCol2, operation: calcOperation, format: calcFormat })
+      if (result.action === 'calculate') {
+        setCalcResult(result.results)
+        toast.success('Columns calculated', `${result.results.length.toLocaleString()} rows processed.`)
       }
-      
-      const date1 = parseCustomDate(row[calcCol1])
-      const date2 = parseCustomDate(row[calcCol2])
-      
-      if (date1 && date2) {
-        // Both are valid dates
-        val1 = date1.getTime()
-        val2 = date2.getTime()
-        isDateCalc = true
-      } else {
-        // Fall back to number parsing
-        val1 = parseFloat(row[calcCol1]) || 0
-        val2 = parseFloat(row[calcCol2]) || 0
-      }
-      
-      const result = calcOperation === 'add' ? val1 + val2 : val1 - val2
-
-      let formatted = ''
-      
-      // Check if we're working with dates
-      if (isDateCalc && calcOperation === 'subtract') {
-        // Convert milliseconds to days/hours/minutes/seconds/milliseconds
-        const diffMs = Math.abs(result)
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-        const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000)
-        const diffMilliseconds = Math.floor(diffMs % 1000)
-        
-        if (diffDays > 0) {
-          formatted = `${diffDays}d ${diffHours}h ${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
-        } else if (diffHours > 0) {
-          formatted = `${diffHours}h ${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
-        } else if (diffMinutes > 0) {
-          formatted = `${diffMinutes}m ${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
-        } else {
-          formatted = `${diffSeconds}.${diffMilliseconds.toString().padStart(3, '0')}s`
-        }
-      } else {
-        // Regular number formatting
-        switch (calcFormat) {
-          case 'currency':
-            formatted = `$${result.toFixed(2)}`
-            break
-          case 'percentage':
-            formatted = `${result.toFixed(2)}%`
-            break
-          default:
-            formatted = result.toFixed(2)
-        }
-      }
-
-      return {
-        row: idx + 1,
-        [calcCol1]: row[calcCol1],
-        [calcCol2]: row[calcCol2],
-        result: result,
-        formatted: formatted
-      }
-    })
-
-    setCalcResult(results)
-    toast.success('Columns calculated', `${results.length.toLocaleString()} rows processed.`)
+    } catch (cause) {
+      toast.error('Unable to calculate columns', cause instanceof Error ? cause.message : undefined)
+    }
   }
 
-  const exportCalcResults = () => {
-    const ws = XLSX.utils.json_to_sheet(calcResult)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Results')
-    XLSX.writeFile(wb, `calculation-${Date.now()}.xlsx`)
-    toast.success('Calculation workbook downloaded')
+  const exportCalcResults = async () => {
+    try {
+      const result = await runTask({ action: 'export-calculation', results: calcResult })
+      if (result.action !== 'export-calculation') return
+      const url = URL.createObjectURL(new Blob([result.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `calculation-${Date.now()}.xlsx`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success('Calculation workbook downloaded')
+    } catch (cause) {
+      toast.error('Unable to export calculation', cause instanceof Error ? cause.message : undefined)
+    }
   }
 
   return (
@@ -426,8 +267,9 @@ export default function ExcelTools() {
             >
               <input
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 onChange={handleAnalyzerUpload}
+                disabled={workerAction !== null}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
               
@@ -455,7 +297,7 @@ export default function ExcelTools() {
                 </p>
                 
                 <p className="text-xs text-on-surface/60">
-                  or click to browse • .xlsx, .xls, .csv
+                  or click to browse • .xlsx, .csv
                 </p>
               </div>
             </div>
@@ -548,9 +390,10 @@ export default function ExcelTools() {
           
           <button
             onClick={testFormula}
-            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors"
+            disabled={workerAction !== null || !formulaInput.trim()}
+            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Test Formula
+            {workerAction === 'formula' ? 'Evaluating...' : 'Test Formula'}
           </button>
           
           {formulaResult && (
@@ -590,7 +433,7 @@ export default function ExcelTools() {
               </label>
               <input
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 onChange={(e) => setDiffFile1(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
               />
@@ -602,7 +445,7 @@ export default function ExcelTools() {
               </label>
               <input
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 onChange={(e) => setDiffFile2(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
               />
@@ -611,10 +454,10 @@ export default function ExcelTools() {
           
           <button
             onClick={handleDiffCompare}
-            disabled={!diffFile1 || !diffFile2}
+            disabled={!diffFile1 || !diffFile2 || workerAction !== null}
             className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Compare Files
+            {workerAction === 'compare' ? 'Comparing...' : 'Compare Files'}
           </button>
           
           {diffResult ? (
@@ -661,10 +504,11 @@ export default function ExcelTools() {
             <label className="block text-sm font-medium text-on-surface mb-2">
               Upload Excel/CSV File
             </label>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleCalcUpload}
+              <input
+                type="file"
+                accept=".xlsx,.csv"
+                onChange={handleCalcUpload}
+                disabled={workerAction !== null}
               className="block w-full text-sm text-on-surface file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
             />
           </div>
@@ -730,10 +574,10 @@ export default function ExcelTools() {
 
               <button
                 onClick={calculateColumns}
-                disabled={!calcCol1 || !calcCol2}
+                disabled={!calcCol1 || !calcCol2 || workerAction !== null}
                 className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Calculate
+                {workerAction === 'calculate' ? 'Calculating...' : 'Calculate'}
               </button>
 
               {calcResult.length > 0 && (() => {
@@ -776,6 +620,7 @@ export default function ExcelTools() {
                         </span>
                         <button
                           onClick={exportCalcResults}
+                          disabled={workerAction !== null}
                           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold transition-colors text-sm flex items-center gap-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -801,8 +646,8 @@ export default function ExcelTools() {
                           {paginatedResults.map((row, idx) => (
                             <tr key={idx} className="border-b border-outline-variant/30">
                               <td className="py-2 px-2 text-on-surface/70">{row.row}</td>
-                              <td className="py-2 px-2 text-on-surface">{row[calcCol1]}</td>
-                              <td className="py-2 px-2 text-on-surface">{row[calcCol2]}</td>
+                              <td className="py-2 px-2 text-on-surface">{String(row[calcCol1] ?? '')}</td>
+                              <td className="py-2 px-2 text-on-surface">{String(row[calcCol2] ?? '')}</td>
                               <td className="py-2 px-2 text-on-surface font-mono">{row.result.toFixed(2)}</td>
                               <td className="py-2 px-2 text-on-surface font-semibold">{row.formatted}</td>
                             </tr>
