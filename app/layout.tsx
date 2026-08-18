@@ -14,6 +14,7 @@ const navigation = [
   { name: 'Excel Tools', href: '/excel-tools', keywords: 'xlsx csv analyzer formula calculator', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
   { name: 'Activity Diagram', href: '/activity-diagram', keywords: 'uml drawio flow chart svg', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
   { name: 'Env to K8s', href: '/env-to-k8s', keywords: 'environment kubernetes yaml properties config', icon: 'M4 7h16M4 12h16M4 17h7m5-1 2 2 4-4' },
+  { name: 'Cron Generator', href: '/cron-expression', keywords: 'cron crontab schedule expression timer job', icon: 'M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z' },
   { name: 'Nginx Redirects', href: '/nginx-redirect', keywords: 'nginx redirect generator rewrite 301 302 308 server config', icon: 'M5 12h13m-5-5 5 5-5 5M5 5v14' },
   { name: 'Hash Generator', href: '/hash-generator', keywords: 'md5 sha checksum digest', icon: 'M7 20l4-16m2 16 4-16M6 9h14M4 15h14' },
   { name: 'Diff Viewer', href: '/diff-viewer', keywords: 'compare text changes', icon: 'M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4' },

@@ -1,6 +1,6 @@
 # MyDevTools
 
-Browser-first developer utilities built with Next.js and a Carbon-inspired UI. Tools include Oracle execution-plan analysis, Rancher log retrieval, SQL extraction, environment-to-Kubernetes conversion, Nginx redirect generation, spreadsheet utilities, diagrams, hashing, diffing, and URL encoding.
+Browser-first developer utilities built with Next.js and a Carbon-inspired UI. Tools include Oracle execution-plan analysis, Rancher log retrieval, SQL extraction, environment-to-Kubernetes conversion, cron expression generation, Nginx redirect generation, spreadsheet utilities, diagrams, hashing, diffing, and URL encoding.
 
 ## Development
 
