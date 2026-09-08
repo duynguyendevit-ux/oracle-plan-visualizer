@@ -17,6 +17,7 @@ const navigation = [
   { name: 'Env to K8s', href: '/env-to-k8s', keywords: 'environment kubernetes yaml properties config', icon: 'M4 7h16M4 12h16M4 17h7m5-1 2 2 4-4' },
   { name: 'Cron Generator', href: '/cron-expression', keywords: 'cron crontab schedule expression timer job', icon: 'M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z' },
   { name: 'Nginx Redirects', href: '/nginx-redirect', keywords: 'nginx redirect generator rewrite 301 302 308 server config', icon: 'M5 12h13m-5-5 5 5-5 5M5 5v14' },
+  { name: 'Web hữu ích', href: '/useful-websites', keywords: 'website resources links tools mạng dns network globalping', icon: 'M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c2.2-2.46 3.33-5.46 3.33-9S14.2 5.46 12 3m0 18c-2.2-2.46-3.33-5.46-3.33-9S9.8 5.46 12 3M3 12h18' },
   { name: 'Hash Generator', href: '/hash-generator', keywords: 'md5 sha checksum digest', icon: 'M7 20l4-16m2 16 4-16M6 9h14M4 15h14' },
   { name: 'Diff Viewer', href: '/diff-viewer', keywords: 'compare text changes', icon: 'M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4' },
   { name: 'URL Encoder', href: '/url-encoder', keywords: 'base64 encode decode uri', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },

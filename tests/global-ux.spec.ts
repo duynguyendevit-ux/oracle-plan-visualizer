@@ -26,6 +26,24 @@ test('filters tools in the sidebar', async ({ page, isMobile }) => {
   await expect(navigation.getByRole('link', { name: 'Log Analyzer' })).toHaveCount(0)
 })
 
+test('opens the useful websites directory with safe external links', async ({ page, isMobile }) => {
+  await page.goto('/')
+  if (isMobile) {
+    await page.getByRole('button', { name: 'Toggle menu' }).click()
+  }
+
+  await page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Web hữu ích' }).click()
+  await expect(page).toHaveURL(/\/useful-websites$/)
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Web hữu ích' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Globalping' })).toBeVisible()
+  await expect(page.getByText('Mạng & DNS', { exact: true })).toBeVisible()
+
+  const externalLink = page.getByRole('link', { name: 'Mở Globalping trong tab mới' })
+  await expect(externalLink).toHaveAttribute('href', 'https://globalping.io/')
+  await expect(externalLink).toHaveAttribute('target', '_blank')
+  await expect(externalLink).toHaveAttribute('rel', 'noopener noreferrer')
+})
+
 test('shows a shared toast after copying and restores the latest tool session', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/url-encoder')
