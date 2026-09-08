@@ -29,12 +29,12 @@ test('search and filter update visible execution nodes', async ({ page }) => {
 
   const svg = page.locator(svgSelector)
   const search = page.getByRole('searchbox', { name: 'Search execution plan' })
-  const archivedNode = svg.locator('.node').filter({ hasText: 'archived_customers' })
-  const customerIndexNode = svg.locator('.node').filter({ hasText: 'idx_customer_status' })
+  const archivedNode = svg.locator('.node').filter({ hasText: 'archived_users' })
+  const userIndexNode = svg.locator('.node').filter({ hasText: 'idx_user_status' })
 
-  await search.fill('archived_customers')
+  await search.fill('archived_users')
   await expect(archivedNode).toHaveAttribute('opacity', '1')
-  await expect(customerIndexNode).toHaveAttribute('opacity', '0.18')
+  await expect(userIndexNode).toHaveAttribute('opacity', '0.18')
 
   const filter = page.locator('label').filter({ hasText: 'Filter' }).getByRole('combobox')
   await search.fill('')

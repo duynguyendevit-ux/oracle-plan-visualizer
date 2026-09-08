@@ -60,13 +60,13 @@ export default function CaseConverter() {
   }
 
   const cases = [
-    { name: 'camelCase', fn: toCamelCase, example: 'myVariableName' },
-    { name: 'PascalCase', fn: toPascalCase, example: 'MyVariableName' },
-    { name: 'snake_case', fn: toSnakeCase, example: 'my_variable_name' },
-    { name: 'kebab-case', fn: toKebabCase, example: 'my-variable-name' },
-    { name: 'CONSTANT_CASE', fn: toConstantCase, example: 'MY_VARIABLE_NAME' },
-    { name: 'dot.case', fn: toDotCase, example: 'my.variable.name' },
-    { name: 'Title Case', fn: toTitleCase, example: 'My Variable Name' },
+    { name: 'camelCase', fn: toCamelCase, example: 'userProfileName' },
+    { name: 'PascalCase', fn: toPascalCase, example: 'UserProfileName' },
+    { name: 'snake_case', fn: toSnakeCase, example: 'user_profile_name' },
+    { name: 'kebab-case', fn: toKebabCase, example: 'user-profile-name' },
+    { name: 'CONSTANT_CASE', fn: toConstantCase, example: 'USER_PROFILE_NAME' },
+    { name: 'dot.case', fn: toDotCase, example: 'user.profile.name' },
+    { name: 'Title Case', fn: toTitleCase, example: 'User Profile Name' },
   ]
 
   return (
@@ -80,7 +80,7 @@ export default function CaseConverter() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter text to convert (e.g., 'my variable name' or 'MyVariableName')..."
+            placeholder="Enter text to convert (e.g., 'user profile name' or 'UserProfileName')..."
             className="w-full h-32 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
           />
         </div>

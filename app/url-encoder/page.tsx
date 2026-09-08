@@ -44,14 +44,14 @@ export default function URLEncoder() {
   }
 
   const operations = [
-    { name: 'URL Encode', fn: encodeURL, example: 'hello%20world%20%26%20more' },
-    { name: 'URL Decode', fn: decodeURL, example: 'hello world & more' },
-    { name: 'Base64 Encode', fn: encodeBase64, example: 'aGVsbG8gd29ybGQ=' },
-    { name: 'Base64 Decode', fn: decodeBase64, example: 'hello world' },
+    { name: 'URL Encode', fn: encodeURL, example: 'user%3Dalex.lee%40example.com' },
+    { name: 'URL Decode', fn: decodeURL, example: 'user=alex.lee@example.com' },
+    { name: 'Base64 Encode', fn: encodeBase64, example: 'dXNlci0xMDQy' },
+    { name: 'Base64 Decode', fn: decodeBase64, example: 'user-1042' },
   ]
 
   const loadSample = () => {
-    setInput('hello world & special chars: @#$%')
+    setInput('user=alex.lee@example.com&role=MEMBER')
   }
 
   return (

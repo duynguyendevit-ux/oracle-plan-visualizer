@@ -68,14 +68,18 @@ export default function DiffViewer() {
   const hasInput = leftText.length > 0 || rightText.length > 0
 
   const loadSample = () => {
-    setLeftText(`function hello() {
-  console.log("Hello World");
-  return true;
+    setLeftText(`{
+  "userId": "user-1042",
+  "username": "alex.lee",
+  "role": "MEMBER",
+  "active": true
 }`)
-    setRightText(`function hello() {
-  console.log("Hello Universe");
-  console.log("Welcome!");
-  return true;
+    setRightText(`{
+  "userId": "user-1042",
+  "username": "alex.lee",
+  "role": "ADMIN",
+  "active": true,
+  "emailVerified": true
 }`)
   }
 

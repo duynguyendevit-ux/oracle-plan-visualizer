@@ -390,11 +390,11 @@ export default function LogAnalyzer() {
   }, [selectedContainer, selectedContext, selectedPodKey])
 
   const loadSample = () => {
-    const sample = `2026-04-06T04:56:28.540Z ERROR 72378 --- [nio-8088-exec-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 904, SQLState: 42000
-2026-04-06T04:56:28.540Z ERROR 72378 --- [nio-8088-exec-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : ORA-00904: "E2_0"."ZONE": invalid identifier
-2026-04-06T04:56:28.541Z WARN  72378 --- [nio-8088-exec-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Warning Code: -1, SQLState: null
-2026-04-06T04:56:28.541Z INFO  72378 --- [nio-8088-exec-1] c.e.service.EventService                  : Processing event batch: 20 items
-2026-04-06T04:56:28.542Z DEBUG 72378 --- [nio-8088-exec-1] o.h.SQL                                   : select e1_0.event_id from events e1_0`
+    const sample = `2026-09-08T09:15:28.540Z ERROR 4210 --- [nio-8080-exec-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 904, SQLState: 42000
+2026-09-08T09:15:28.540Z ERROR 4210 --- [nio-8080-exec-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : ORA-00904: "U1_0"."DISPLAY_NAMEE": invalid identifier
+2026-09-08T09:15:28.541Z WARN  4210 --- [nio-8080-exec-3] c.e.users.UserProfileService              : Falling back to username for userId=user-1042
+2026-09-08T09:15:28.541Z INFO  4210 --- [nio-8080-exec-3] c.e.users.UserProfileService              : Loading active user profile: alex.lee
+2026-09-08T09:15:28.542Z DEBUG 4210 --- [nio-8080-exec-3] o.h.SQL                                   : select u1_0.user_id,u1_0.username,u1_0.email from users u1_0 where u1_0.status='ACTIVE'`
     setInput(sample)
   }
 

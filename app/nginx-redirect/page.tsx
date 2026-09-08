@@ -12,9 +12,9 @@ interface RedirectParseResult {
   validCount: number
 }
 
-const sampleRedirects = `/old-home | https://example.com/
-/outdated/* | https://example.com/archive/$1
-/docs/start | https://docs.example.com/getting-started`
+const sampleRedirects = `/users/old-profile | https://example.com/users/profile
+/members/* | https://example.com/users/$1
+/account/settings | https://example.com/users/preferences`
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -199,7 +199,7 @@ export default function NginxRedirectGenerator() {
               id="redirect-input"
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="/old-path | https://example.com/new-path"
+              placeholder="/members/old-profile | https://example.com/users/profile"
               className="min-h-[22rem] w-full flex-1 resize-y border border-outline-variant/60 p-3 font-mono text-sm leading-6 text-on-surface placeholder:text-on-surface-variant/70"
               spellCheck={false}
               aria-describedby="redirect-input-help"

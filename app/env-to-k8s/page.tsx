@@ -20,36 +20,28 @@ interface SavedEnvToK8sState {
 
 const storageKey = 'env-to-k8s-state-v1'
 
-const sampleEnv = `server.port=8082
-server.tomcat.connection-timeout=10s
-server.tomcat.threads.max=150
-server.tomcat.threads.min-spare=20
-server.tomcat.max-connections=2000
-server.tomcat.accept-count=300
-server.tomcat.keep-alive-timeout=15s
+const sampleEnv = `server.port=8080
+app.users.registration.enabled=true
+app.users.profile.default-role=MEMBER
+app.users.profile.max-avatar-size=5MB
+app.users.session.timeout=30m
 
-spring.servlet.multipart.enabled= true
-spring.servlet.multipart.max-file-size= 100MB
-spring.servlet.multipart.max-request-size= 100MB
-
-schedule:
-    reception:
-        completed:
+users:
+    cleanup:
+        enabled: true
+        page-size: 200
+        fixed-rate: 60000
+        inactive-days: 90
+    notifications:
+        welcome-email:
             enabled: true
-            pageSize: 300
-            fixedRate: 29000
-            initialDelay: 10000
-            minutes-back: PT30M
+            sender: no-reply@example.com
 
-cloud:
-    stream:
-        kafka:
-            bindings:
-                elevateEventLevelConsumer-in-0:
-                    consumer:
-                        configuration:
-                            max.poll.records: 50
-                            fetch.max.wait.ms: 100`
+spring:
+    datasource:
+        hikari:
+            maximum-pool-size: 20
+            minimum-idle: 5`
 
 function stripInlineComment(value: string) {
   let quote: string | null = null
@@ -391,7 +383,7 @@ export default function EnvToK8s() {
               setPrefix(event.target.value)
               setOutput('')
             }}
-            placeholder="SCHEDULE_"
+            placeholder="USER_SERVICE_"
             aria-label="Environment variable prefix"
             className="w-full h-9 px-3 border border-warm-300/60 rounded bg-white font-mono text-sm text-warm-800 placeholder-warm-400"
           />
@@ -460,7 +452,7 @@ export default function EnvToK8s() {
                 setOutput('')
               }}
               onKeyDown={handleEditorKeyDown}
-              placeholder="Paste properties or YAML here, for example: spring.servlet.multipart.enabled= true"
+              placeholder="Paste properties or YAML here, for example: app.users.registration.enabled=true"
               className="w-full h-[520px] p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
             <button

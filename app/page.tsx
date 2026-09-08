@@ -137,7 +137,7 @@ function singleSample(): PlanNode {
       {
         operation: 'TABLE ACCESS',
         options: 'FULL',
-        objectName: 'customers',
+        objectName: 'users',
         cost: 10,
         estimatedRows: 10,
         actualRows: 118,
@@ -145,7 +145,7 @@ function singleSample(): PlanNode {
       {
         operation: 'INDEX',
         options: 'RANGE SCAN',
-        objectName: 'idx_customer_status',
+        objectName: 'idx_user_status',
         cost: 3,
         estimatedRows: 120,
         actualRows: 118,
@@ -160,7 +160,7 @@ function singleSample(): PlanNode {
           {
             operation: 'TABLE ACCESS',
             options: 'FULL',
-            objectName: 'archived_customers',
+            objectName: 'archived_users',
             cost: 0,
             estimatedRows: 0,
             actualRows: 0,
@@ -182,7 +182,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'TABLE ACCESS',
         options: 'FULL',
-        objectName: 'customers',
+        objectName: 'users',
         cost: 8,
         estimatedRows: 100,
         actualRows: 96,
@@ -190,7 +190,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'SORT',
         options: 'ORDER BY',
-        objectName: 'customer_name',
+        objectName: 'user_display_name',
         cost: 2,
         estimatedRows: 100,
         actualRows: 96,
@@ -198,7 +198,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'INDEX',
         options: 'RANGE SCAN',
-        objectName: 'idx_customer_status',
+        objectName: 'idx_user_status',
         cost: 2,
         estimatedRows: 100,
         actualRows: 96,
@@ -216,7 +216,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'TABLE ACCESS',
         options: 'FULL',
-        objectName: 'customers',
+        objectName: 'users',
         cost: 10,
         estimatedRows: 10,
         actualRows: 118,
@@ -224,7 +224,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'INDEX',
         options: 'RANGE SCAN',
-        objectName: 'idx_customer_status',
+        objectName: 'idx_user_status',
         cost: 3,
         estimatedRows: 120,
         actualRows: 118,
@@ -232,7 +232,7 @@ function comparisonSamples(): { baseline: PlanNode; current: PlanNode } {
       {
         operation: 'TABLE ACCESS',
         options: 'FULL',
-        objectName: 'customer_addresses',
+        objectName: 'user_profiles',
         cost: 4,
         estimatedRows: 5,
         actualRows: 118,
@@ -248,8 +248,8 @@ const singleDbmsSample = `SQL_ID  demo, child number 0
 | Id | Operation          | Name      | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
 -------------------------------------
 |  0 | SELECT STATEMENT   |           |      1 |        |      1 | 00:00:00.02 |     180 |          14 |
-|  1 |  TABLE ACCESS FULL | CUSTOMERS |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
-|  2 |  INDEX RANGE SCAN  | IDX_STATUS|      1 |    120 |    118 | 00:00:00.01 |      20 |           3 |
+|  1 |  TABLE ACCESS FULL | USERS     |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
+|  2 |  INDEX RANGE SCAN  | IDX_USER_STATUS |  1 |    120 |    118 | 00:00:00.01 |      20 |           3 |
 -------------------------------------
 Predicate Information:
 1 - filter("STATUS"='ACTIVE')`
@@ -257,12 +257,12 @@ Predicate Information:
 function comparisonDbmsSamples() {
   const baseline = `| Id | Operation          | Name       | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
 |  0 | SELECT STATEMENT   |            |      1 |    100 |     96 | 00:00:00.01 |     100 |          12 |
-|  1 |  TABLE ACCESS FULL | CUSTOMERS  |      1 |    100 |     96 | 00:00:00.01 |      80 |           8 |
-|  2 |  SORT ORDER BY     | CUSTOMER_N |      1 |    100 |     96 | 00:00:00.01 |      20 |           2 |`
+|  1 |  TABLE ACCESS FULL | USERS       |      1 |    100 |     96 | 00:00:00.01 |      80 |           8 |
+|  2 |  SORT ORDER BY     | USER_NAME   |      1 |    100 |     96 | 00:00:00.01 |      20 |           2 |`
   const current = `| Id | Operation          | Name       | Starts | E-Rows | A-Rows | A-Time      | Buffers | Cost (%CPU)|
 |  0 | SELECT STATEMENT   |            |      1 |    120 |    118 | 00:00:00.03 |     220 |          15 |
-|  1 |  TABLE ACCESS FULL | CUSTOMERS  |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
-|  2 |  TABLE ACCESS FULL | ADDRESSES  |      1 |      5 |    118 | 00:00:00.01 |      60 |           4 |`
+|  1 |  TABLE ACCESS FULL | USERS         |      1 |     10 |    118 | 00:00:00.02 |     160 |          10 |
+|  2 |  TABLE ACCESS FULL | USER_PROFILES |      1 |      5 |    118 | 00:00:00.01 |      60 |           4 |`
   return { baseline, current }
 }
 

@@ -9,30 +9,27 @@ import { useToolSession } from '@/hooks/useToolSession'
 import { copyText, toast } from '@/lib/toast'
 
 export default function ActivityDiagram() {
-  const [input, setInput] = useState(`lane Thread 1
+  const [input, setInput] = useState(`lane Web App
 start
--> idle
--> user action
--> post command
+-> open user profile
+-> submit profile update
 
-lane Thread 2
+lane User API
 start
--> idle
--> check for new commands
--> command queue
-if (queue empty?) then
-  -> [yes] back to idle
+-> validate user input
+if (email valid?) then
+  -> [yes] update user
 else
-  -> [no] dispatch command
+  -> [no] return validation error
 endif
 
-lane Thread 3
--> process command
+lane User Database
+-> save user profile
 end
 
 # Cross-lane connections
-Thread 1: post command -> Thread 2: command queue
-Thread 2: dispatch command -> Thread 3: process command`)
+Web App: submit profile update -> User API: validate user input
+User API: update user -> User Database: save user profile`)
 
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')

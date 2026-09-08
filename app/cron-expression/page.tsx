@@ -128,7 +128,7 @@ export default function CronExpressionGenerator() {
 
   const loadSample = () => {
     setCron(defaultCron)
-    toast.info('Weekday morning sample loaded')
+    toast.info('Weekday user report schedule loaded')
   }
 
   const copyExpression = () => {
@@ -145,7 +145,7 @@ export default function CronExpressionGenerator() {
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">Developer tool</p>
           <h1 className="text-2xl font-semibold text-on-surface md:text-3xl">Cron Expression Generator</h1>
-          <p className="mt-2 text-sm text-on-surface-variant">Build a five-field cron schedule from readable time and date controls.</p>
+          <p className="mt-2 text-sm text-on-surface-variant">Build a five-field cron schedule for tasks such as user reports and account cleanup.</p>
         </div>
         <button
           type="button"

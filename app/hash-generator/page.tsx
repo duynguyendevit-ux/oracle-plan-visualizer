@@ -40,7 +40,7 @@ export default function HashGenerator() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter text to hash..."
+            placeholder="Enter a user ID or email to hash..."
             className="w-full h-32 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
           />
         </div>
