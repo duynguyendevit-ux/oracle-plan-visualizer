@@ -25,8 +25,11 @@ export function useWorkerRpc<Request, Response>(createWorker: () => Worker) {
   const requestIdRef = useRef(0)
   const pendingRef = useRef(new Map<number, PendingRequest<Response>>())
   const createWorkerRef = useRef(createWorker)
+  createWorkerRef.current = createWorker
 
-  useEffect(() => {
+  const ensureWorker = useCallback(() => {
+    if (workerRef.current) return workerRef.current
+
     const worker = createWorkerRef.current()
     const pendingRequests = pendingRef.current
     workerRef.current = worker
@@ -52,19 +55,30 @@ export function useWorkerRpc<Request, Response>(createWorker: () => Worker) {
       pendingRequests.clear()
     }
 
+    return worker
+  }, [])
+
+  useEffect(() => {
+    ensureWorker()
+    const pendingRequests = pendingRef.current
+
     return () => {
+      const worker = workerRef.current
+      if (!worker) return
       worker.terminate()
       workerRef.current = null
       pendingRequests.forEach((pending) => pending.reject(new Error('Background task was cancelled.')))
       pendingRequests.clear()
     }
-  }, [])
+  }, [ensureWorker])
 
   return useCallback((payload: Request, options: { onProgress?: (progress: number) => void; transfer?: Transferable[] } = {}) => {
     return new Promise<Response>((resolve, reject) => {
-      const worker = workerRef.current
-      if (!worker) {
-        reject(new Error('Background worker is not ready.'))
+      let worker: Worker
+      try {
+        worker = ensureWorker()
+      } catch (cause) {
+        reject(cause instanceof Error ? cause : new Error('Background worker failed to start.'))
         return
       }
 
@@ -73,5 +87,5 @@ export function useWorkerRpc<Request, Response>(createWorker: () => Worker) {
       const request: WorkerRequest<Request> = { id, payload }
       worker.postMessage(request, options.transfer ?? [])
     })
-  }, [])
+  }, [ensureWorker])
 }

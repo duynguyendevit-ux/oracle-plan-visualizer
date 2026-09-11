@@ -26,6 +26,26 @@ test('filters tools in the sidebar', async ({ page, isMobile }) => {
   await expect(navigation.getByRole('link', { name: 'Log Analyzer' })).toHaveCount(0)
 })
 
+test('uses a transform-only mobile sidebar and avoids animated desktop reflow', async ({ page, isMobile }) => {
+  await page.addInitScript(() => localStorage.setItem('sidebarCollapsed', 'true'))
+  await page.goto('/')
+
+  const sidebar = page.getByTestId('app-sidebar')
+  if (isMobile) {
+    await page.getByRole('button', { name: 'Toggle menu' }).click()
+    await expect(sidebar).toBeVisible()
+    await expect.poll(async () => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(288)
+    await expect.poll(async () => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().left))).toBe(0)
+    await expect.poll(async () => sidebar.evaluate((element) => getComputedStyle(element).transitionProperty)).toBe('transform')
+    await expect.poll(async () => sidebar.evaluate((element) => element.scrollWidth === element.clientWidth)).toBe(true)
+    return
+  }
+
+  await expect.poll(async () => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(80)
+  await expect.poll(async () => sidebar.evaluate((element) => getComputedStyle(element).transitionProperty)).toBe('none')
+  await expect.poll(async () => sidebar.evaluate((element) => element.scrollWidth === element.clientWidth)).toBe(true)
+})
+
 test('opens the useful websites directory with safe external links', async ({ page, isMobile }) => {
   await page.goto('/')
   if (isMobile) {
@@ -44,6 +64,24 @@ test('opens the useful websites directory with safe external links', async ({ pa
   await expect(externalLink).toHaveAttribute('rel', 'noopener noreferrer')
 })
 
+test('explores consistent hashing topology changes and key placement', async ({ page }) => {
+  await page.goto('/consistent-hashing')
+  await expect(page.getByRole('heading', { name: 'Consistent Hashing Explorer' })).toBeVisible()
+  await expect(page.getByTestId('consistent-hash-ring')).toBeVisible()
+  await expect(page.getByText('server-a', { exact: true }).first()).toBeVisible()
+
+  await page.getByRole('button', { name: 'Locate', exact: true }).click()
+  await expect(page.getByText('user:1042', { exact: true })).toBeVisible()
+  await expect(page.getByText(/maps to server-[a-c]/)).toBeVisible()
+  await expect(page.getByTestId('located-key-marker')).toBeVisible()
+
+  await page.getByRole('button', { name: /Add server/ }).click()
+  await expect(page.getByText('server-d', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Added server-d', { exact: true })).toBeVisible()
+  await expect(page.getByText(/existing keys moved to a different server/)).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
 test('shows a shared toast after copying and restores the latest tool session', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/url-encoder')
@@ -53,7 +91,7 @@ test('shows a shared toast after copying and restores the latest tool session', 
   await page.getByRole('button', { name: 'Copy' }).first().click()
   await expect(page.getByRole('status')).toContainText('URL Encode copied')
 
-  await page.waitForTimeout(450)
+  await expect.poll(async () => page.evaluate(() => localStorage.getItem('mydevtools:session:url-encoder:v1'))).toContain('session value')
   await page.reload()
   await expect(input).toHaveValue('session value')
 })
@@ -138,6 +176,7 @@ test('hands log input to SQL Extractor and SQL context to Execution Plan', async
   await page.getByRole('button', { name: 'Send to SQL' }).click()
   await expect(page).toHaveURL(/\/sql-extractor$/)
   await expect(page.getByPlaceholder(/Paste logs, code/)).toContainText('ORA-00904')
+  await expect(page.getByPlaceholder(/Paste logs, code/)).toContainText('from users')
 
   await page.getByRole('button', { name: /Extract SQL/ }).click()
   await page.getByRole('button', { name: 'Open in Plan' }).click()
@@ -145,11 +184,49 @@ test('hands log input to SQL Extractor and SQL context to Execution Plan', async
   await expect(page.getByText('Source SQL', { exact: true })).toBeVisible()
 })
 
+test('groups repeated log root causes and filters by correlation ID', async ({ page }) => {
+  await page.goto('/log-analyzer')
+  await page.getByRole('button', { name: 'Load Sample' }).click()
+  await page.getByRole('button', { name: 'Analyze Logs' }).click()
+
+  await expect(page.getByText('Trace:', { exact: false }).first()).toBeVisible()
+  await expect(page.getByTestId('log-root-cause').first()).toContainText('ORA-00904')
+  await page.getByRole('button', { name: 'Error groups' }).click()
+  await expect(page.getByTestId('error-groups')).toContainText('2 occurrences')
+
+  await page.getByLabel('Trace or request ID').fill('trace-user-1042')
+  await page.getByRole('button', { name: 'Analyze Logs' }).click()
+  await page.getByRole('button', { name: 'Entries' }).click()
+  await expect(page.getByText('trace-user-1042', { exact: true })).toBeVisible()
+  await expect(page.getByText('trace-user-1044', { exact: true })).toHaveCount(0)
+})
+
+test('parses structured JSON metadata without merging the next text entry', async ({ page }) => {
+  const structuredError = JSON.stringify({
+    '@timestamp': '2026-09-10T10:00:00.000Z',
+    'log.level': 'ERROR',
+    'log.logger': 'example.users.UserImportService',
+    'trace.id': 'json-trace-1',
+    'request.id': 'json-request-1',
+    message: 'User import failed',
+    'error.stack_trace': 'java.lang.IllegalStateException: Import failed\nCaused by: java.io.IOException: users.csv is unreadable',
+  })
+
+  await page.goto('/log-analyzer')
+  await page.getByPlaceholder('Paste Spring Boot logs here or upload a file...').fill(`${structuredError}\n2026-09-10T10:00:01.000Z INFO 1 --- [main] example.users.UserImportService : Import retry scheduled`)
+  await page.getByRole('button', { name: 'Analyze Logs' }).click()
+
+  await expect(page.getByText('json-trace-1', { exact: true })).toBeVisible()
+  await expect(page.getByText('json-request-1', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('log-root-cause')).toContainText('users.csv is unreadable')
+  await expect(page.getByText('1 --- [main] example.users.UserImportService : Import retry scheduled', { exact: true })).toBeVisible()
+})
+
 test('saves and restores a named workspace snapshot', async ({ page }) => {
   await page.goto('/url-encoder')
   const input = page.getByPlaceholder('Enter text to encode/decode...')
   await input.fill('workspace original')
-  await page.waitForTimeout(400)
+  await expect.poll(async () => page.evaluate(() => localStorage.getItem('mydevtools:session:url-encoder:v1'))).toContain('workspace original')
 
   await page.getByRole('button', { name: 'Open workspace manager' }).click()
   await page.getByLabel('Workspace name').fill('E2E Workspace')
@@ -158,7 +235,7 @@ test('saves and restores a named workspace snapshot', async ({ page }) => {
   await page.getByRole('button', { name: 'Close workspace manager' }).click()
 
   await input.fill('changed value')
-  await page.waitForTimeout(400)
+  await expect.poll(async () => page.evaluate(() => localStorage.getItem('mydevtools:session:url-encoder:v1'))).toContain('changed value')
   await page.getByRole('button', { name: 'Open workspace manager' }).click()
   await page.getByText('E2E Workspace').locator('..').locator('..').getByRole('button', { name: 'Restore' }).click()
   await page.waitForLoadState('domcontentloaded')

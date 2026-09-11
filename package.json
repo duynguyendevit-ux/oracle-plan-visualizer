@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
+    "dev:test": "NEXT_DIST_DIR=.next-e2e next dev",
     "setup:rancher": "node scripts/setup-rancher-log.mjs",
     "dev:rancher": "node scripts/rancher-log-agent.mjs --next",
     "rancher-agent": "node scripts/rancher-log-agent.mjs",
     "build": "next build",
+    "build:local": "NEXT_DIST_DIR=.next-prod next build",
     "start": "next start",
+    "start:local": "NEXT_DIST_DIR=.next-prod next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:agent": "node --test tests/rancher-log-agent.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "verify": "npm run typecheck && npm run lint && npm run test:agent && npm run test:e2e && npm run build:local"
   },
   "dependencies": {
     "@types/d3": "^7.4.3",

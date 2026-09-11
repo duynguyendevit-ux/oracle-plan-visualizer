@@ -6,22 +6,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ToastViewport from '@/components/ToastViewport'
 import WorkspaceManager from '@/components/WorkspaceManager'
-
-const navigation = [
-  { name: 'Log Analyzer', href: '/log-analyzer', keywords: 'logs rancher kubectl pod errors', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { name: 'Execution Plan Visual', href: '/', keywords: 'oracle sql explain xplan cost', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-  { name: 'SQL Extractor', href: '/sql-extractor', keywords: 'hibernate query bind log format', icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' },
-  { name: 'Protobuf Decoder', href: '/protobuf-decoder', keywords: 'protobuf proto kafka decode hex base64 escaped bytes confluent schema registry', icon: 'M4 6h16M4 12h10M4 18h16m-3-9 3 3-3 3' },
-  { name: 'Excel Tools', href: '/excel-tools', keywords: 'xlsx csv analyzer formula calculator', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
-  { name: 'Activity Diagram', href: '/activity-diagram', keywords: 'uml drawio flow chart svg', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-  { name: 'Env to K8s', href: '/env-to-k8s', keywords: 'environment kubernetes yaml properties config', icon: 'M4 7h16M4 12h16M4 17h7m5-1 2 2 4-4' },
-  { name: 'Cron Generator', href: '/cron-expression', keywords: 'cron crontab schedule expression timer job', icon: 'M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { name: 'Nginx Redirects', href: '/nginx-redirect', keywords: 'nginx redirect generator rewrite 301 302 308 server config', icon: 'M5 12h13m-5-5 5 5-5 5M5 5v14' },
-  { name: 'Web hữu ích', href: '/useful-websites', keywords: 'website resources links tools mạng dns network globalping', icon: 'M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c2.2-2.46 3.33-5.46 3.33-9S14.2 5.46 12 3m0 18c-2.2-2.46-3.33-5.46-3.33-9S9.8 5.46 12 3M3 12h18' },
-  { name: 'Hash Generator', href: '/hash-generator', keywords: 'md5 sha checksum digest', icon: 'M7 20l4-16m2 16 4-16M6 9h14M4 15h14' },
-  { name: 'Diff Viewer', href: '/diff-viewer', keywords: 'compare text changes', icon: 'M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4' },
-  { name: 'URL Encoder', href: '/url-encoder', keywords: 'base64 encode decode uri', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
-]
+import { tools as navigation, type ToolDefinition } from '@/data/tools'
 
 const favoritesKey = 'mydevtools:favorites:v1'
 const recentKey = 'mydevtools:recent:v1'
@@ -48,7 +33,7 @@ function isTextEntry(target: EventTarget | null) {
   return element?.tagName === 'INPUT' || element?.tagName === 'TEXTAREA' || element?.tagName === 'SELECT' || element?.isContentEditable
 }
 
-function matchesTool(item: (typeof navigation)[number], query: string) {
+function matchesTool(item: ToolDefinition, query: string) {
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
   if (tokens.length === 0) return true
   const searchable = `${item.name} ${item.keywords}`.toLowerCase()
@@ -218,7 +203,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={isDarkMode ? 'dark' : ''} suppressHydrationWarning>
       <body>
         <div className="flex h-screen overflow-hidden">
-          <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 flex flex-col border-r border-outline-variant/60 bg-surface-container-low transition-all duration-300 lg:static lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-72'}`}>
+          <div
+            data-testid="app-sidebar"
+            className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 flex w-72 transform-gpu will-change-transform flex-col overflow-x-hidden border-r border-outline-variant/60 bg-surface-container-low transition-transform duration-200 ease-out motion-reduce:transition-none lg:static lg:translate-x-0 lg:transform-none lg:transition-none lg:will-change-auto ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}
+          >
             <div className="flex h-16 flex-none items-center gap-3 border-b border-outline-variant/60 bg-surface-container px-5">
               <div className={`flex h-10 w-10 flex-none items-center justify-center overflow-hidden ${sidebarCollapsed ? 'mx-auto' : ''}`}>
                 <video autoPlay loop muted playsInline className="h-full w-full object-cover">
@@ -252,7 +240,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             )}
 
-            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-4" aria-label="Tools">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-4" aria-label="Tools">
               {filteredNavigation.map((item) => {
                 const isActive = pathname === item.href
                 return (
@@ -260,6 +248,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Link
                       href={item.href}
                       onClick={() => setSidebarOpen(false)}
+                      title={sidebarCollapsed ? item.name : undefined}
                       className={`flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-12 text-sm font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container'}`}
                     >
                       <span className="flex-none"><ToolIcon path={item.icon} /></span>
@@ -269,9 +258,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       <button type="button" onClick={() => { toggleFavorite(item.href); setSidebarOpen(false) }} aria-label={`${favorites.includes(item.href) ? 'Remove' : 'Add'} ${item.name} ${favorites.includes(item.href) ? 'from' : 'to'} favorites`} title="Favorite" className="absolute right-2 h-8 w-8 text-on-surface-variant opacity-100 hover:text-primary lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100">
                         {favorites.includes(item.href) ? '★' : '☆'}
                       </button>
-                    )}
-                    {sidebarCollapsed && (
-                      <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap bg-surface-container-highest px-3 py-2 text-sm text-on-surface opacity-0 shadow-warm-lg transition-opacity group-hover:opacity-100">{item.name}</span>
                     )}
                   </div>
                 )

@@ -61,7 +61,7 @@ test('loads Rancher pod logs from the configured local kubeconfig and analyzes t
   await page.getByRole('button', { name: 'Fetch once' }).click()
 
   await expect(page.getByPlaceholder('Paste Spring Boot logs here or upload a file...')).toContainText('Rancher log failure')
-  await expect(page.getByText('Rancher log failure', { exact: false })).toBeVisible()
+  await expect(page.getByText('1 --- [main] c.e.EventDiary : Rancher log failure', { exact: true })).toBeVisible()
   await expect(page.getByText('ERROR', { exact: true }).first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Clear', exact: true }).click()

@@ -12,11 +12,25 @@ npm run dev
 Open `http://127.0.0.1:3000`. Verification commands:
 
 ```bash
+npm run verify
+```
+
+Run individual checks when narrowing a failure:
+
+```bash
 npm run typecheck
 npm run lint
 npm run test:e2e
 npm run test:agent
 npm run build
+```
+
+Development, Playwright, and local production use separate Next.js output
+directories. For a local production artifact, run:
+
+```bash
+npm run build:local
+npm run start:local -- --hostname 127.0.0.1 --port 3100
 ```
 
 Large log, SQL, formula, and spreadsheet operations run in Web Workers. Excel tools accept `.xlsx` and `.csv`; legacy `.xls` is intentionally unsupported.

@@ -3,10 +3,11 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import EmptyState from '@/components/EmptyState'
+import { LOG_ANALYZER_SAMPLE } from '@/data/log-analyzer-samples'
 import { useToolSession } from '@/hooks/useToolSession'
 import { useWorkerRpc } from '@/hooks/useWorkerRpc'
 import { sendToolTransfer } from '@/hooks/useToolTransfer'
-import type { LogEntry, LogStats } from '@/lib/log-analyzer'
+import type { LogEntry, LogErrorGroup, LogStats } from '@/lib/log-analyzer'
 import { copyText, toast } from '@/lib/toast'
 import type { LogWorkerRequest, LogWorkerResult } from '@/workers/log-analyzer.worker'
 
@@ -31,6 +32,7 @@ interface RancherAvailability {
 type LogSource = 'file' | 'rancher'
 type RancherAction = 'check-environment' | 'install-kubectl' | 'contexts' | 'namespaces' | 'pods' | 'logs' | null
 type LiveStatus = 'stopped' | 'connecting' | 'live' | 'paused' | 'reconnecting'
+type ResultView = 'entries' | 'groups'
 
 const RANCHER_LOG_AGENT_URL = process.env.NEXT_PUBLIC_RANCHER_LOG_AGENT_URL || 'http://127.0.0.1:3210/rancher-logs'
 
@@ -38,8 +40,11 @@ export default function LogAnalyzer() {
   const router = useRouter()
   const [input, setInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [correlationId, setCorrelationId] = useState('')
   const [filterLevel, setFilterLevel] = useState<string>('ALL')
   const [results, setResults] = useState<LogEntry[]>([])
+  const [errorGroups, setErrorGroups] = useState<LogErrorGroup[]>([])
+  const [resultView, setResultView] = useState<ResultView>('entries')
   const [stats, setStats] = useState<LogStats | null>(null)
   const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -87,7 +92,9 @@ export default function LogAnalyzer() {
   useToolSession('log-analyzer', {
     input: input.length <= 400_000 ? input : '',
     searchTerm,
+    correlationId,
     filterLevel,
+    resultView,
     utcPlus7,
     logSource,
     selectedContext,
@@ -100,7 +107,9 @@ export default function LogAnalyzer() {
   }, (saved) => {
     if (typeof saved.input === 'string') setInput(saved.input)
     if (typeof saved.searchTerm === 'string') setSearchTerm(saved.searchTerm)
+    if (typeof saved.correlationId === 'string') setCorrelationId(saved.correlationId)
     if (typeof saved.filterLevel === 'string') setFilterLevel(saved.filterLevel)
+    if (saved.resultView === 'entries' || saved.resultView === 'groups') setResultView(saved.resultView)
     if (typeof saved.utcPlus7 === 'boolean') setUtcPlus7(saved.utcPlus7)
     if (saved.logSource === 'file' || saved.logSource === 'rancher') setLogSource(saved.logSource)
     if (typeof saved.selectedContext === 'string') setSelectedContext(saved.selectedContext)
@@ -155,6 +164,19 @@ export default function LogAnalyzer() {
         <span className="text-[10px] md:text-xs text-warm-500 ml-auto">Line {entry.line}</span>
       </div>
       <div className="text-xs md:text-sm font-mono text-warm-800 mb-1.5 md:mb-2 break-words">{entry.message}</div>
+      {(entry.logger || entry.traceId || entry.requestId) && (
+        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-warm-600 md:text-xs">
+          {entry.logger && <span>Logger: <code className="text-warm-800">{entry.logger}</code></span>}
+          {entry.traceId && <span>Trace: <code className="text-warm-800">{entry.traceId}</code></span>}
+          {entry.requestId && <span>Request: <code className="text-warm-800">{entry.requestId}</code></span>}
+        </div>
+      )}
+      {entry.rootCause && (
+        <div data-testid="log-root-cause" className="mb-2 border-l-4 border-red-500 bg-surface-container p-2 text-[10px] text-red-700 dark:text-red-300 md:text-xs">
+          <span className="font-semibold">Root cause: </span>
+          <code className="break-words">{entry.rootCause}</code>
+        </div>
+      )}
       {entry.stackTrace && entry.stackTrace.length > 0 && (
         <details className="text-[10px] md:text-xs font-mono text-warm-600">
           <summary className="cursor-pointer hover:text-primary">Stack trace ({entry.stackTrace.length} lines)</summary>
@@ -239,9 +261,10 @@ export default function LogAnalyzer() {
     setAnalyzeProgress(1)
 
     try {
-      const result = await runLogTask({ input: sourceInput, filterLevel, searchTerm }, { onProgress: setAnalyzeProgress })
+      const result = await runLogTask({ input: sourceInput, filterLevel, searchTerm, correlationId }, { onProgress: setAnalyzeProgress })
       if (generation !== analysisGenerationRef.current) return
       setResults(result.entries)
+      setErrorGroups(result.errorGroups)
       setStats(result.stats)
       toast.success('Log analysis complete', `${result.stats.filtered.toLocaleString()} matching entries.`)
       setTimeout(() => setAnalyzeProgress(0), 1000)
@@ -254,7 +277,7 @@ export default function LogAnalyzer() {
     } finally {
       if (generation === analysisGenerationRef.current) setLoading(false)
     }
-  }, [filterLevel, input, runLogTask, searchTerm])
+  }, [correlationId, filterLevel, input, runLogTask, searchTerm])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -390,12 +413,7 @@ export default function LogAnalyzer() {
   }, [selectedContainer, selectedContext, selectedPodKey])
 
   const loadSample = () => {
-    const sample = `2026-09-08T09:15:28.540Z ERROR 4210 --- [nio-8080-exec-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 904, SQLState: 42000
-2026-09-08T09:15:28.540Z ERROR 4210 --- [nio-8080-exec-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : ORA-00904: "U1_0"."DISPLAY_NAMEE": invalid identifier
-2026-09-08T09:15:28.541Z WARN  4210 --- [nio-8080-exec-3] c.e.users.UserProfileService              : Falling back to username for userId=user-1042
-2026-09-08T09:15:28.541Z INFO  4210 --- [nio-8080-exec-3] c.e.users.UserProfileService              : Loading active user profile: alex.lee
-2026-09-08T09:15:28.542Z DEBUG 4210 --- [nio-8080-exec-3] o.h.SQL                                   : select u1_0.user_id,u1_0.username,u1_0.email from users u1_0 where u1_0.status='ACTIVE'`
-    setInput(sample)
+    setInput(LOG_ANALYZER_SAMPLE)
   }
 
   const handleKubeconfigUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -592,6 +610,10 @@ export default function LogAnalyzer() {
   const exportResults = () => {
     const text = results.map(entry => {
       let output = `[${entry.level}] ${entry.timestamp}\nLine ${entry.line}: ${entry.message}`
+      if (entry.logger) output += `\nLogger: ${entry.logger}`
+      if (entry.traceId) output += `\nTrace ID: ${entry.traceId}`
+      if (entry.requestId) output += `\nRequest ID: ${entry.requestId}`
+      if (entry.rootCause) output += `\nRoot cause: ${entry.rootCause}`
       if (entry.stackTrace && entry.stackTrace.length > 0) {
         output += '\n' + entry.stackTrace.join('\n')
       }
@@ -611,6 +633,10 @@ export default function LogAnalyzer() {
   const copyEntry = (entry: LogEntry) => {
     const displayTimestamp = utcPlus7 ? convertToUTC7(entry.timestamp) : entry.timestamp
     let text = `[${entry.level}] ${displayTimestamp}\nLine ${entry.line}: ${entry.message}`
+    if (entry.logger) text += `\nLogger: ${entry.logger}`
+    if (entry.traceId) text += `\nTrace ID: ${entry.traceId}`
+    if (entry.requestId) text += `\nRequest ID: ${entry.requestId}`
+    if (entry.rootCause) text += `\nRoot cause: ${entry.rootCause}`
     if (entry.stackTrace && entry.stackTrace.length > 0) {
       text += '\n' + entry.stackTrace.join('\n')
     }
@@ -647,8 +673,11 @@ export default function LogAnalyzer() {
     rancherConfigGeneration.current += 1
     setInput('')
     setSearchTerm('')
+    setCorrelationId('')
     setFilterLevel('ALL')
     setResults([])
+    setErrorGroups([])
+    setResultView('entries')
     setStats(null)
     setError('')
     setKubeconfig('')
@@ -675,7 +704,7 @@ export default function LogAnalyzer() {
     <div className="p-4 max-w-full mx-auto">
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-3 md:grid-cols-7 gap-2 md:gap-3 mb-3 md:mb-4">
+        <div className="grid grid-cols-4 md:grid-cols-8 gap-2 md:gap-3 mb-3 md:mb-4">
           <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
             <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">Total</div>
             <div className="text-lg md:text-2xl font-serif font-semibold text-warm-800">{stats.total}</div>
@@ -703,6 +732,10 @@ export default function LogAnalyzer() {
           <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
             <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">TRACE</div>
             <div className="text-lg md:text-2xl font-serif font-semibold text-gray-500">{stats.TRACE}</div>
+          </div>
+          <div className="bg-warm-50 rounded-lg p-2 md:p-4 shadow-warm border border-warm-300/60">
+            <div className="text-[10px] md:text-xs font-medium text-warm-600 uppercase tracking-wide mb-0.5 md:mb-1">Unparsed</div>
+            <div className="text-lg md:text-2xl font-serif font-semibold text-gray-500">{stats.unparsedLines}</div>
           </div>
         </div>
       )}
@@ -1039,13 +1072,21 @@ export default function LogAnalyzer() {
               className="w-full h-48 md:h-64 p-3 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-warm-800 placeholder-warm-400"
             />
             
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.6fr)_auto]">
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search keyword..."
                 className="flex-1 p-2 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent text-warm-800 placeholder-warm-400"
+              />
+              <input
+                type="text"
+                value={correlationId}
+                onChange={(e) => setCorrelationId(e.target.value)}
+                placeholder="Trace / Request ID..."
+                aria-label="Trace or request ID"
+                className="min-w-0 p-2 border border-warm-300/60 rounded bg-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-transparent text-warm-800 placeholder-warm-400"
               />
               <select
                 value={filterLevel}
@@ -1103,7 +1144,15 @@ export default function LogAnalyzer() {
         {/* Results Panel */}
         <div className="bg-warm-50 rounded-lg shadow-warm border border-warm-300/60 overflow-hidden">
           <div className="bg-warm-100/50 px-4 py-3 border-b border-warm-300/60 flex flex-wrap justify-between items-center gap-2">
-            <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Results</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-serif font-semibold text-warm-800 uppercase tracking-wide">Results</h3>
+              {results.length > 0 && (
+                <div className="inline-flex border border-outline-variant/60" role="group" aria-label="Result view">
+                  <button type="button" onClick={() => setResultView('entries')} aria-pressed={resultView === 'entries'} className={`h-8 px-3 text-xs font-semibold ${resultView === 'entries' ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container'}`}>Entries</button>
+                  <button type="button" onClick={() => setResultView('groups')} aria-pressed={resultView === 'groups'} className={`h-8 border-l border-outline-variant/60 px-3 text-xs font-semibold ${resultView === 'groups' ? 'bg-primary text-white' : 'bg-surface-container-lowest text-on-surface hover:bg-surface-container'}`}>Error groups</button>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               {results.length > 0 && (
                 <>
@@ -1133,6 +1182,28 @@ export default function LogAnalyzer() {
           <div className="p-4 overflow-auto h-full">
             {results.length === 0 ? (
               <EmptyState title={stats ? 'No matching logs' : 'No analysis results'} description={stats ? 'Adjust the search term or log level filter, then analyze again.' : 'Paste a log file or fetch pod logs, then select Analyze Logs.'} />
+            ) : resultView === 'groups' ? (
+              errorGroups.length === 0 ? (
+                <EmptyState compact title="No error groups" description="No ERROR entries match the current filters." />
+              ) : (
+                <div className="divide-y divide-outline-variant/60 border-y border-outline-variant/60" data-testid="error-groups">
+                  {errorGroups.map((group) => (
+                    <div key={group.signature} className="bg-surface-container-lowest p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase text-red-600">Root cause</p>
+                          <p className="mt-1 break-words font-mono text-sm text-on-surface">{group.cause}</p>
+                        </div>
+                        <span className="flex-none bg-red-100 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-300">{group.count} occurrence{group.count === 1 ? '' : 's'}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-on-surface-variant">
+                        {group.logger && <span>Logger: <code className="text-on-surface">{group.logger}</code></span>}
+                        <span>Lines: <code className="text-on-surface">{group.lines.join(', ')}</code></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : (
               <div className="space-y-3">
                 {results.map((entry, idx) => renderLogEntry(entry, idx))}
